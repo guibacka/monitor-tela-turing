@@ -145,6 +145,19 @@ class Handler(BaseHTTPRequestHandler):
             if STATIC not in file.parents or not file.is_file():
                 return self._error("Não encontrado", 404)
             return self._send(200, file.read_bytes(), mimetypes.guess_type(file.name)[0] or "application/octet-stream")
+        if url.path in ("/icons/tabler-icons.ttf", "/icons/tabler-icons-filled.ttf"):
+            # Fontes da biblioteca de ícones (a página usa para mostrar os ícones; a tela usa as mesmas)
+            file = L.SYMBOLS_DIR / url.path.rsplit("/", 1)[1]
+            if not file.is_file():
+                return self._error("Não encontrado", 404)
+            self.send_response(200)
+            self.send_header("Content-Type", "font/ttf")
+            self.send_header("Cache-Control", "max-age=86400")
+            body = file.read_bytes()
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if not self._api_ok():
             return self._error("Não autorizado", 403)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
@@ -152,6 +165,8 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/catalog":
                 return self._json({"sources": L.SOURCES, "widgets": L.WIDGET_LABELS, "static": L.STATIC_KINDS,
                                    "fonts": L.list_fonts()})
+            if url.path == "/api/icons":
+                return self._json(L.symbol_catalog())
             if url.path == "/api/presets":
                 return self._json({"presets": L.list_presets(), "active": active_theme()})
             if url.path == "/api/preset":

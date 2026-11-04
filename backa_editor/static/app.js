@@ -67,7 +67,9 @@ function itemLabel(item) {
     return `${src.group} · ${src.label} — ${S.catalog.widgets[item.widget]}`;
   }
   const base = S.catalog.static[item.kind];
-  return item.kind === "label" ? `${base}: "${item.text}"` : base;
+  if (item.kind === "label") return `${base}: "${item.text}"`;
+  if (item.kind === "symbol") return `${base}: ${item.icon || "?"}`;
+  return base;
 }
 
 function itemColor(item) {
@@ -172,7 +174,7 @@ function zOrder(item, idx) {
 }
 
 // Itens que mudam de tamanho pela fonte (os cantos ajustam o tamanho do texto/ícone)
-const SCALED = new Set(["text", "label", "weather", "icon"]);
+const SCALED = new Set(["text", "label", "weather", "icon", "symbol"]);
 
 function renderOverlay() {
   const ov = $("overlay");
@@ -327,6 +329,7 @@ function onDrag(ev) {
     const grow = drag.handle.includes("s") ? dy : -dy;
     const ratio = Math.max(0.2, (ob[3] + grow) / Math.max(ob[3], 1));
     if (kind === "icon") item.size = Math.max(8, Math.round((o.size || 22) * ratio));
+    else if (kind === "symbol") item.size = Math.max(8, Math.round((o.size || 32) * ratio));
     else item.size = Math.max(6, Math.round((o.size || 14) * ratio));
     if (kind === "weather") item.icon_size = Math.max(8, Math.round((o.icon_size || 22) * ratio));
     S.boxes[item.id] = [ob[0], ob[1], ob[2] * ratio, ob[3] * ratio];
@@ -366,6 +369,7 @@ const STATIC_DEFAULTS = {
   panel: { x: 40, y: 40, w: 160, h: 100, radius: 10, fill: [17, 20, 27], outline: [80, 86, 100], outline_width: 1 },
   label: { x: 40, y: 40, text: "Texto", font: "roboto/Roboto-Bold.ttf", size: 14, color: [240, 240, 245], anchor: "la" },
   image: { x: 40, y: 40, w: 80, h: 80, src: "" },
+  symbol: { x: 40, y: 40, size: 32, icon: "cpu", style: "outline", color: [240, 240, 245] },
   line: { x: 40, y: 60, x2: 200, y2: 60, color: [80, 86, 100], width: 1 },
 };
 
@@ -410,7 +414,9 @@ function renderPalette() {
   for (const [kind, label] of Object.entries(S.catalog.static)) {
     const b = document.createElement("button");
     b.textContent = `+ ${label}`;
-    b.onclick = () => addItem({ kind, ...clone(STATIC_DEFAULTS[kind]) });
+    b.onclick = kind === "symbol"
+      ? () => pickSymbol((icon, style) => addItem({ kind, ...clone(STATIC_DEFAULTS[kind]), icon, style }))
+      : () => addItem({ kind, ...clone(STATIC_DEFAULTS[kind]) });
     sb.appendChild(b);
   }
   stat.appendChild(sb);
@@ -533,6 +539,11 @@ function fieldsFor(item) {
       break;
     case "image":
       F.push({ key: "src", label: "Imagem", type: "image" }, ...pos, ...size);
+      break;
+    case "symbol":
+      F.push({ key: "icon", label: "Ícone", type: "symbol" }, ...pos, { key: "size", label: "Tamanho", type: "int", placeholder: "32" },
+        { key: "color", label: "Cor", type: "color" },
+        { key: "style", label: "Estilo", type: "select", options: [["outline", "Contorno"], ["filled", "Preenchido"]] });
       break;
     case "line":
       F.push({ key: "x", label: "X inicial", type: "int" }, { key: "y", label: "Y inicial", type: "int" },
@@ -700,6 +711,15 @@ function makeField(f, item) {
     b.onclick = () => pickImage((src) => set(src));
     row.appendChild(b);
     if (val) row.insertAdjacentHTML("beforeend", `<span class="muted small">${escapeHtml(val)}</span>`);
+  } else if (f.type === "symbol") {
+    row.insertAdjacentHTML("beforeend", symbolGlyph(val, item.style, "glyph big"));
+    const b = document.createElement("button");
+    b.textContent = "Trocar ícone…";
+    b.onclick = () => pickSymbol((icon, style) => updateSelected({ icon, style }), item.style);
+    row.appendChild(b);
+    row.insertAdjacentHTML("beforeend", `<span class="muted small">${escapeHtml(val || "")}</span>`);
+    if (item.style === "filled" && S.icons && !(S.icons.icons[val] || [])[1])
+      row.insertAdjacentHTML("beforeend", `<div class="muted small">Este ícone não tem versão preenchida: aparece em contorno.</div>`);
   } else if (f.type === "levels") {
     row.classList.add("levels");
     const lv = { ...(val || {}) };
@@ -818,6 +838,103 @@ function pickImage(onDone) {
 }
 
 // ---------------------------------------------------------------------------
+// Biblioteca de ícones (Tabler Icons): sugeridos + busca em todos
+// ---------------------------------------------------------------------------
+const plain = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+async function loadSymbols() {
+  if (!S.icons) {
+    S.icons = await api("/api/icons");
+    // Texto de busca sem acentos, para "ventoinha", "temperatura", "vídeo"... funcionarem de qualquer jeito
+    S.iconSearch = Object.entries(S.icons.icons).map(([name, v]) => [name, plain(v[2]).split(/[\s-]+/)]);
+  }
+  return S.icons;
+}
+
+function symbolGlyph(name, style, cls = "glyph") {
+  const v = S.icons && S.icons.icons[name];
+  if (!v) return `<span class="${cls}">?</span>`;
+  const filled = style === "filled" ? v[1] || 0 : 0;
+  const code = filled || v[0] || v[1];
+  const family = filled || !v[0] ? " filled" : "";
+  return `<span class="${cls}${family}">&#${code};</span>`;
+}
+
+async function pickSymbol(onDone, style = "outline") {
+  try { await loadSymbols(); } catch (e) { toast(`Não foi possível carregar os ícones: ${e.message}`, "error"); return; }
+  const modal = $("iconModal");
+  const search = $("iconSearch");
+  const list = $("iconList");
+  let curStyle = style === "filled" ? "filled" : "outline";
+  const close = () => { modal.classList.add("hidden"); S.picking = false; };
+  const cell = (name) => {
+    const b = document.createElement("button");
+    b.className = "icon-cell";
+    b.title = name;
+    b.innerHTML = `${symbolGlyph(name, curStyle)}<span class="nm">${escapeHtml(name)}</span>`;
+    b.onclick = () => { close(); onDone(name, curStyle); };
+    return b;
+  };
+  const grid = (names) => {
+    const g = document.createElement("div");
+    g.className = "icon-grid";
+    for (const n of names) g.appendChild(cell(n));
+    return g;
+  };
+  const draw = () => {
+    list.innerHTML = "";
+    const words = plain(search.value.trim()).split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      for (const [group, names] of S.icons.suggested) {
+        list.insertAdjacentHTML("beforeend", `<h3>${escapeHtml(group)}</h3>`);
+        list.appendChild(grid(names.filter((n) => S.icons.icons[n])));
+      }
+      list.insertAdjacentHTML("beforeend", `<div class="muted small icon-foot">Digite para buscar entre os ${S.iconSearch.length} ícones (em português ou inglês). Ícones: Tabler Icons ${escapeHtml(S.icons.version)}, licença MIT.</div>`);
+      return;
+    }
+    // Cada palavra digitada precisa ser o começo de alguma palavra do nome/tags ("rede" acha rede, não "credentials")
+    let found = S.iconSearch.filter(([, tokens]) => words.every((w) => tokens.some((tk) => tk.startsWith(w))));
+    if (curStyle === "filled") found = found.filter(([name]) => S.icons.icons[name][1]);
+    // Ordem: nome exato > todas as palavras no nome > sugeridos (têm nome em português) > texto no nome > só nas tags; depois os nomes mais curtos
+    const q = words.join("-");
+    const suggested = new Set(S.icons.suggested.flatMap(([, names]) => names));
+    const score = (name) => {
+      const parts = name.split("-");
+      if (name === q) return 4;
+      if (words.every((w) => parts.includes(w))) return 3;
+      if (suggested.has(name)) return 2;
+      return words.every((w) => name.includes(w)) ? 1 : 0;
+    };
+    found = found.map(([name, tokens]) => [name, tokens, score(name)]);
+    found.sort((a, b) => b[2] - a[2] || a[0].length - b[0].length || a[0].localeCompare(b[0]));
+    const LIMIT = 400;
+    list.insertAdjacentHTML("beforeend", `<div class="muted small">${found.length} ícone(s)${found.length > LIMIT ? ` — mostrando os ${LIMIT} primeiros, refine a busca` : ""}</div>`);
+    if (found.length) list.appendChild(grid(found.slice(0, LIMIT).map(([n]) => n)));
+    else list.insertAdjacentHTML("beforeend", `<div class="muted">Nada encontrado. Tente outra palavra (ex.: cpu, temperatura, rede, jogo).</div>`);
+  };
+  for (const b of modal.querySelectorAll("[data-style]")) {
+    b.classList.toggle("on", b.dataset.style === curStyle);
+    b.onclick = () => {
+      curStyle = b.dataset.style;
+      for (const o of modal.querySelectorAll("[data-style]")) o.classList.toggle("on", o === b);
+      draw();
+    };
+  }
+  $("iconClose").onclick = close;
+  modal.onmousedown = (e) => { if (e.target === modal) close(); };
+  search.oninput = () => { clearTimeout(search._t); search._t = setTimeout(draw, 120); };
+  search.onkeydown = (e) => {
+    if (e.key === "Escape") close();
+    if (e.key === "Enter") list.querySelector(".icon-cell")?.click();
+  };
+  search.value = "";
+  draw();
+  S.picking = true;
+  modal.classList.remove("hidden");
+  search.focus();
+}
+
+// ---------------------------------------------------------------------------
 // Presets: carregar, novo, salvar, aplicar
 // ---------------------------------------------------------------------------
 async function loadPresets() {
@@ -928,6 +1045,10 @@ async function refreshLive() {
 // Teclado e eventos
 // ---------------------------------------------------------------------------
 function onKey(ev) {
+  if (S.picking) {
+    if (ev.key === "Escape") $("iconClose").click();
+    return;
+  }
   const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName);
   if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "s") { ev.preventDefault(); save(); return; }
   if (typing) return;
@@ -973,6 +1094,7 @@ function fitZoom() {
 
 async function init() {
   S.catalog = await api("/api/catalog");
+  loadSymbols().then(() => S.selected && renderProps()).catch(() => {});
   const { presets, active } = await api("/api/presets");
   S.presets = presets;
   fitZoom();

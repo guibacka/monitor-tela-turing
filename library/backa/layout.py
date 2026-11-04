@@ -19,6 +19,8 @@ MAIN_DIRECTORY = Path(__file__).resolve().parent.parent.parent
 THEMES_DIR = MAIN_DIRECTORY / "res" / "themes"
 FONTS_DIR = MAIN_DIRECTORY / "res" / "fonts"
 ICONS_DIR = MAIN_DIRECTORY / "res" / "backa" / "icons"
+# Biblioteca de ícones do editor (Tabler Icons, licença MIT), gerada por res/backa/make_icon_catalog.py
+SYMBOLS_DIR = MAIN_DIRECTORY / "res" / "backa" / "tabler-icons"
 LAYOUT_FILE = "layout.json"
 
 # Chave do widget no editor -> chave usada no theme.yaml
@@ -88,7 +90,7 @@ SOURCES = {
     "STATUS_BORDER": {"group": "Extras", "label": "Borda de status", "custom": "BackaStatusBorder", "widgets": ["border"]},
 }
 
-STATIC_KINDS = {"panel": "Painel", "label": "Texto", "image": "Imagem", "line": "Linha"}
+STATIC_KINDS = {"panel": "Painel", "label": "Texto", "image": "Imagem", "symbol": "Ícone", "line": "Linha"}
 
 GRAY = (130, 138, 150)
 
@@ -102,6 +104,38 @@ def _font(name: str, size: int) -> ImageFont.FreeTypeFont:
         return ImageFont.truetype(str(FONTS_DIR / name), int(size))
     except Exception:
         return ImageFont.truetype(str(FONTS_DIR / "roboto-mono/RobotoMono-Bold.ttf"), int(size))
+
+
+_symbol_catalog = None
+
+
+def symbol_catalog() -> dict:
+    global _symbol_catalog
+    if _symbol_catalog is None:
+        try:
+            _symbol_catalog = json.loads((SYMBOLS_DIR / "catalog.json").read_text(encoding="utf-8"))
+        except Exception:
+            _symbol_catalog = {"version": "", "suggested": [], "icons": {}}
+    return _symbol_catalog
+
+
+def _draw_symbol(img: Image.Image, item: dict):
+    # Ícone da biblioteca: um caractere da fonte de ícones, centralizado num quadrado de "size" px, na cor escolhida.
+    # Se o estilo preenchido não existir para esse ícone, usa o de contorno.
+    entry = symbol_catalog()["icons"].get(item.get("icon") or "")
+    if not entry:
+        return
+    size = max(4, int(item.get("size", 32)))
+    filled = item.get("style") == "filled" and entry[1]
+    code = entry[1] if filled else entry[0]
+    if not code:
+        code, filled = entry[1], True
+    try:
+        font = ImageFont.truetype(str(SYMBOLS_DIR / ("tabler-icons-filled.ttf" if filled else "tabler-icons.ttf")), size)
+    except Exception:
+        return
+    ImageDraw.Draw(img).text((int(item["x"]) + size / 2, int(item["y"]) + size / 2), chr(code), font=font,
+                             fill=_rgb(item.get("color")), anchor="mm")
 
 
 def _rgb(c, default=(255, 255, 255)):
@@ -198,6 +232,8 @@ def _draw_background(layout: dict, folder: Path) -> Image.Image:
                 img.paste(pic, (int(item["x"]), int(item["y"])), pic)
             except Exception:
                 pass
+        elif kind == "symbol":
+            _draw_symbol(img, item)
         elif kind == "data" and item.get("widget") == "bar" and item.get("track"):
             # Trilho da barra de progresso: faz parte do fundo
             d.rectangle((item["x"], item["y"], item["x"] + item["w"] - 1, item["y"] + item["h"] - 1), fill=_rgb(item["track"]))
@@ -364,6 +400,9 @@ def render_preview(layout: dict, folder: Path = None):
             bb = d.textbbox((item["x"], item["y"]), item.get("text", "") or " ",
                             font=_font(item.get("font", "roboto/Roboto-Bold.ttf"), item.get("size", 12)), anchor=item.get("anchor", "la"))
             boxes[iid] = [bb[0], bb[1], bb[2] - bb[0], bb[3] - bb[1]]
+        elif kind == "symbol":
+            size = int(item.get("size", 32))
+            boxes[iid] = [item["x"], item["y"], size, size]
         elif kind == "line":
             x0, x1 = sorted((item["x"], item["x2"]))
             y0, y1 = sorted((item["y"], item["y2"]))
