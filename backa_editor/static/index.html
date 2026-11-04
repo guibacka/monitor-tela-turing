@@ -24,6 +24,11 @@
       <select id="zoomSelect"><option value="1">100%</option><option value="1.5">150%</option><option value="2" selected>200%</option><option value="2.5">250%</option></select>
       <label class="check"><input type="checkbox" id="snapCheck" checked> Grade de 4 px</label>
     </div>
+    <div class="group">
+      <button id="btnExport" title="Baixar este preset como .zip (layout + imagens): backup ou levar para outro PC">Exportar</button>
+      <button id="btnImport" title="Adicionar um preset a partir de um .zip exportado">Importar…</button>
+      <button id="btnAuto" title="Rodízio de presets e modo jogo">Automação…</button>
+    </div>
     <div class="status" id="statusText"></div>
     <button id="btnClose" class="danger" title="Fecha o editor e libera a porta (o monitor da tela continua rodando)">Fechar editor</button>
   </header>
@@ -79,7 +84,42 @@
     </div>
   </div>
 
+  <div id="autoModal" class="modal hidden">
+    <div class="modal-box auto-box">
+      <div class="modal-head">
+        <h2>Automação da tela</h2>
+        <span class="muted small" id="autoNow"></span>
+        <span style="flex:1"></span>
+        <button id="autoClose" title="Fechar (Esc)">✕</button>
+      </div>
+      <div class="modal-body">
+        <section class="auto-sec">
+          <label class="check big"><input type="checkbox" id="gameOn"> Modo jogo</label>
+          <div class="muted small">Enquanto um jogo estiver em primeiro plano, a tela mostra outro preset. Ao sair do jogo, volta ao normal.</div>
+          <div class="field"><label>Preset do jogo</label><select id="gamePreset"></select></div>
+          <div class="field"><label>Entrar depois de</label><div class="row"><input type="number" id="gameEnter" min="1" max="60"> s com o jogo aberto</div></div>
+          <div class="field"><label>Voltar depois de</label><div class="row"><input type="number" id="gameExit" min="2" max="600"> s fora do jogo (alt+tab rápido não troca)</div></div>
+          <label class="check"><input type="checkbox" id="gameFull"> Também considerar jogo qualquer programa em tela cheia desenhando quadros (exceto navegadores, players de vídeo etc.)</label>
+          <div class="muted small" id="gameList"></div>
+        </section>
+        <section class="auto-sec">
+          <label class="check big"><input type="checkbox" id="rotOn"> Rodízio de presets</label>
+          <div class="muted small">Alterna entre os presets marcados. "Aplicar na tela" mostra o preset na hora, e o rodízio continua a partir dele.</div>
+          <div class="field"><label>Trocar a cada</label><div class="row"><input type="number" id="rotSecs" min="5" max="3600"> segundos</div></div>
+          <div class="field"><label>Presets</label><div id="rotList" class="rot-list"></div></div>
+        </section>
+      </div>
+      <div class="modal-foot">
+        <span class="muted small">Com o modo jogo ativo, o rodízio pausa durante o jogo.</span>
+        <span style="flex:1"></span>
+        <button id="autoCancel">Cancelar</button>
+        <button id="autoSave" class="primary">Salvar</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
+  <input type="file" id="zipInput" accept=".zip,application/zip" class="hidden">
   <input type="file" id="fileInput" accept="image/*" class="hidden">
   <script src="/static/app.js"></script>
 </body>

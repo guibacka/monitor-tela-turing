@@ -699,42 +699,68 @@ def _kill_with_parent(proc):
         logger.warning("FPS: não foi possível vincular o PresentMon ao monitor (%s)" % e)
 
 
+def _drain_stderr(proc, tail):
+    # Lê os avisos do PresentMon o tempo todo. Sem isso, com o jogo pesado ele avisa "eventos perdidos" várias
+    # vezes, o canal enche e o PresentMon TRAVA esperando alguém ler (o FPS some e fica em "-- FPS").
+    try:
+        for line in proc.stderr:
+            line = line.strip()
+            if line:
+                tail.append(line)
+    except Exception:
+        pass
+
+
 def _read_presentmon(proc):
     # Lê a saída CSV do PresentMon: uma linha por quadro apresentado, de qualquer programa
+    tail = deque(maxlen=5)
+    threading.Thread(target=_drain_stderr, args=(proc, tail), daemon=True, name="PresentMon_err").start()
     pid_col = ms_col = None
-    for line in proc.stdout:
-        cols = line.rstrip("\r\n").split(",")
-        if pid_col is None:
-            if "ProcessID" in cols:
-                _fps["fails"] = 0  # o PresentMon está entregando dados: zera as tentativas
-                pid_col = cols.index("ProcessID")
-                for name in ("MsBetweenPresents", "FrameTime", "MsBetweenDisplayChange"):
-                    if name in cols:
-                        ms_col = cols.index(name)
-                        break
-            continue
+    try:
+        for line in proc.stdout:
+            cols = line.rstrip("\r\n").split(",")
+            if pid_col is None:
+                if "ProcessID" in cols:
+                    _fps["fails"] = 0  # o PresentMon está entregando dados: zera as tentativas
+                    pid_col = cols.index("ProcessID")
+                    for name in ("MsBetweenPresents", "FrameTime", "MsBetweenDisplayChange"):
+                        if name in cols:
+                            ms_col = cols.index(name)
+                            break
+                continue
+            try:
+                pid, ms = int(cols[pid_col]), float(cols[ms_col])
+            except (ValueError, IndexError, TypeError):
+                continue
+            now = time.time()
+            with _fps["lock"]:
+                frames = _fps["frames"].setdefault(pid, deque())
+                frames.append((now, ms))
+                while frames and now - frames[0][0] > 2:
+                    frames.popleft()
+    except Exception as e:
+        logger.warning("FPS: erro lendo o PresentMon (%s)" % e)
         try:
-            pid, ms = int(cols[pid_col]), float(cols[ms_col])
-        except (ValueError, IndexError, TypeError):
-            continue
-        now = time.time()
-        with _fps["lock"]:
-            frames = _fps["frames"].setdefault(pid, deque())
-            frames.append((now, ms))
-            while frames and now - frames[0][0] > 2:
-                frames.popleft()
+            proc.kill()
+        except Exception:
+            pass
     # O PresentMon fechou: registra o motivo e agenda uma nova tentativa
     try:
         proc.wait(timeout=5)
-        err = (proc.stderr.read() or "").strip().replace("\n", " | ")[-300:]
     except Exception:
-        err = ""
+        pass
+    err = " | ".join(tail)[-300:]
     _fps["fails"] = _fps.get("fails", 0) + 1
     delay = min(60, 5 * _fps["fails"])
     if _fps.get("stopping"):
         return  # encerrado de propósito pelo monitor
-    logger.warning("FPS: o PresentMon foi encerrado (código %s). %s Nova tentativa em %d s"
-                   % (proc.returncode, ("Mensagem: " + err + ".") if err else "", delay))
+    # "Acesso negado" (código 6) se repete enquanto um anti-cheat bloqueia: avisa uma vez, depois só no modo debug
+    log = logger.debug if proc.returncode == 6 and _fps.get("denied_warned") else logger.warning
+    if proc.returncode == 6 and not _fps.get("denied_warned"):
+        _fps["denied_warned"] = True
+        err += " (o FPS continua pela leitura direta dos eventos, se houver uma sessão disponível)"
+    log("FPS: o PresentMon foi encerrado (código %s). %s Nova tentativa em %d s"
+        % (proc.returncode, ("Mensagem: " + err + ".") if err else "", delay))
     _fps["proc"] = None
     _fps["started"] = False
     _fps["retry_at"] = time.time() + delay
@@ -747,6 +773,8 @@ PRESENTMON_SESSION = "BackaFPS-%d" % os.getpid()
 
 def backa_shutdown():
     # Chamado pelo monitor antes de sair/reiniciar: encerra o PresentMon do jeito certo, liberando a sessão de captura
+    if _etw.get("reader"):
+        _etw["reader"].close()  # leitor direto de eventos (a sessão BackaFPS continua, de propósito)
     proc = _fps.get("proc")
     if proc is None or proc.poll() is not None:
         return
@@ -761,6 +789,44 @@ def backa_shutdown():
         proc.terminate()
 
 
+# Reserva: leitura direta dos eventos de vídeo do Windows (library/backa/etwfps.py). Usada quando o PresentMon não
+# consegue abrir uma sessão nova (ex.: anti-cheat do Battlefield 6 com o jogo aberto). Também deixa a sessão
+# "BackaFPS" criada desde o início do monitor, para que um reinício durante o jogo continue tendo FPS.
+_etw = {"reader": None}
+
+
+def _etw_reader():
+    reader = _etw["reader"]
+    if reader is None:
+        try:
+            from library.backa import etwfps
+            reader = _etw["reader"] = etwfps.Reader(
+                Path(config.MAIN_DIRECTORY) / "res" / "backa" / "etw-fps-reader.ps1", logger)
+        except Exception as e:
+            reader = _etw["reader"] = False
+            logger.warning("FPS: leitura direta indisponível (%s)" % e)
+    return reader or None
+
+
+def _etw_fps(pid, launch):
+    # launch=True: o PresentMon está fora do ar, pode abrir o leitor. False: só usa se ele já estiver aberto.
+    reader = _etw_reader()
+    if reader is None:
+        return None
+    try:
+        reader.prepare()
+        if not launch and reader.proc is None:
+            return None
+        value = reader.fps(pid)
+        if time.time() >= _etw.get("debug_at", 0):
+            _etw["debug_at"] = time.time() + 60
+            logger.debug("FPS (leitura direta) pid=%s fps=%s: %s" % (pid, value, reader.debug()))
+        return value
+    except Exception as e:
+        logger.debug("FPS (leitura direta): %s" % e)
+        return None
+
+
 def _start_presentmon():
     _fps["started"] = True
     if not PRESENTMON.exists():
@@ -770,7 +836,7 @@ def _start_presentmon():
         proc = subprocess.Popen(
             [str(PRESENTMON), "--output_stdout", "--no_csv", "--no_console_stats",
              "--session_name", PRESENTMON_SESSION, "--stop_existing_session"],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, encoding="utf-8", errors="replace",
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except Exception as e:
         logger.warning("FPS: falha ao iniciar o PresentMon (%s)" % e)
@@ -794,16 +860,32 @@ def current_fps():
     # FPS médio do último segundo do programa em primeiro plano; None ("-- FPS") se ele não está desenhando quadros
     if not _fps_enabled():
         return None
+    if config.CONFIG_DATA["config"].get("FPS_LEITURA_DIRETA", False):
+        return _etw_fps(_foreground_pid(), True)  # forçado no config.yaml: não usa o PresentMon
     if not _fps["started"] and time.time() >= _fps.get("retry_at", 0):
         _start_presentmon()
-    if _fps["proc"] is None:
-        return None
     pid, now = _foreground_pid(), time.time()
+    if _fps["proc"] is None:
+        return _etw_fps(pid, True)  # PresentMon fora do ar (ex.: bloqueado pelo anti-cheat): usa a leitura direta
     with _fps["lock"]:
         for old in [p for p, f in _fps["frames"].items() if not f or now - f[-1][0] > 5]:
             del _fps["frames"][old]
         recent = [ms for t, ms in _fps["frames"].get(pid, ()) if now - t <= 1.0]
+        busy = sorted(((len(f), p) for p, f in _fps["frames"].items()), reverse=True)[:4] if not recent else None
     if not recent:
+        # O PresentMon não vê quadros do programa em primeiro plano (anti-cheat, PresentMon reiniciando...):
+        # tenta a leitura direta dos eventos
+        etw = _etw_fps(pid, True)
+        if etw:
+            return etw
+    else:
+        _etw_fps(pid, False)  # só para fechar o leitor direto quando o PresentMon voltou (após 1 min sem uso)
+    if not recent:
+        # Diagnóstico (no máximo 1 vez por minuto): quem está desenhando quadros, se não é o programa em primeiro plano
+        if now - _fps.get("diag_at", 0) >= 60:
+            _fps["diag_at"] = now
+            logger.debug("FPS: sem quadros do programa em primeiro plano (PID %s); com quadros: %s"
+                         % (pid, ", ".join("PID %d (%d)" % (p, n) for n, p in busy) or "nenhum"))
         return None
     avg = sum(recent) / len(recent)
     return int(round(1000.0 / avg)) if avg > 0 else None
@@ -820,19 +902,23 @@ def _fps_fast_loop():
     # O texto do FPS tem ritmo próprio (REFRESH, padrão 1 s), mais rápido que os outros sensores personalizados.
     # Só redesenha quando o valor muda, para não ocupar a tela à toa.
     from library import stats
+    from library.backa.themelock import THEME_LOCK
     while True:
         cfg = config.THEME_DATA["STATS"]["CUSTOM"].get("BackaFps") or {}
         time.sleep(max(0.25, float(cfg.get("REFRESH", 1))))
-        text_cfg = cfg.get("TEXT")
-        if not text_cfg or not text_cfg.get("SHOW"):
-            continue
-        text = _fps_text(current_fps())
-        if text != _fps_draw["last"]:
-            try:
-                stats.display_themed_value(theme_data=text_cfg, value=text)
-                _fps_draw["last"] = text
-            except Exception as e:
-                logger.debug("FPS: %s" % e)
+        # Lê o tema DEPOIS de esperar e dentro da trava: se o preset trocou nesse meio tempo, usa a posição nova
+        with THEME_LOCK.reading():
+            cfg = config.THEME_DATA["STATS"]["CUSTOM"].get("BackaFps") or {}
+            text_cfg = cfg.get("TEXT")
+            if not text_cfg or not text_cfg.get("SHOW"):
+                continue
+            text = _fps_text(current_fps())
+            if text != _fps_draw["last"]:
+                try:
+                    stats.display_themed_value(theme_data=text_cfg, value=text)
+                    _fps_draw["last"] = text
+                except Exception as e:
+                    logger.debug("FPS: %s" % e)
 
 
 class BackaFps(CustomDataSource):

@@ -866,7 +866,7 @@ async function pickSymbol(onDone, style = "outline") {
   const search = $("iconSearch");
   const list = $("iconList");
   let curStyle = style === "filled" ? "filled" : "outline";
-  const close = () => { modal.classList.add("hidden"); S.picking = false; };
+  const close = () => { modal.classList.add("hidden"); S.modalClose = null; };
   const cell = (name) => {
     const b = document.createElement("button");
     b.className = "icon-cell";
@@ -929,9 +929,146 @@ async function pickSymbol(onDone, style = "outline") {
   };
   search.value = "";
   draw();
-  S.picking = true;
+  S.modalClose = close;
   modal.classList.remove("hidden");
   search.focus();
+}
+
+// ---------------------------------------------------------------------------
+// Exportar / importar presets (.zip com layout.json + imagens)
+// ---------------------------------------------------------------------------
+async function exportPreset() {
+  if (S.dirty && !confirm("Há alterações não salvas: o arquivo vai ter a última versão salva. Exportar mesmo assim?")) return;
+  try {
+    const res = await fetch(`/api/export?name=${encodeURIComponent(S.name)}`, { headers: { "X-Backa-Token": TOKEN } });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Erro ${res.status}`);
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${S.name}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast(`Preset exportado: ${S.name}.zip`, "ok");
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
+function importPreset() {
+  if (S.dirty && !confirm("Há alterações não salvas neste preset. Importar outro mesmo assim?")) return;
+  const input = $("zipInput");
+  input.value = "";
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    const data = await new Promise((res) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.readAsDataURL(file);
+    });
+    try {
+      const info = await api("/api/import-info", { data, filename: file.name });
+      // askName já pergunta antes de substituir um preset com o mesmo nome
+      const name = askName(`Importar preset (${info.items} itens, ${info.images} imagem(ns)). Nome do preset:`, info.suggested);
+      if (!name) return;
+      const out = await api("/api/import", { name, data, overwrite: S.presets.includes(name) });
+      if (out.problems && out.problems.length) toast(`Importado, mas com problemas: ${out.problems[0]}`, "error");
+      else toast(`Preset "${out.name}" importado`, "ok");
+      await openPreset(out.name);
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  };
+  input.click();
+}
+
+// ---------------------------------------------------------------------------
+// Automação: modo jogo e rodízio de presets (gravado em automacao.json; o monitor aplica sozinho)
+// ---------------------------------------------------------------------------
+async function openAutomation() {
+  let res;
+  try {
+    res = await api("/api/automation");
+  } catch (e) {
+    toast(e.message, "error");
+    return;
+  }
+  const { settings: s, presets, games, monitor } = res;
+  const modal = $("autoModal");
+
+  $("gameOn").checked = s.game.enabled;
+  const gp = $("gamePreset");
+  gp.innerHTML = "";
+  gp.add(new Option("— escolha um preset —", ""));
+  for (const p of presets) gp.add(new Option(p, p, false, p === s.game.preset));
+  $("gameEnter").value = s.game.enter_seconds;
+  $("gameExit").value = s.game.exit_seconds;
+  $("gameFull").checked = s.game.fullscreen;
+  $("gameList").textContent = games.length
+    ? `Jogos que o Windows já reconhece: ${games.join(", ")}. Jogos novos entram sozinhos depois de abertos.`
+    : "O Windows ainda não reconheceu nenhum jogo. Eles aparecem aqui depois de abertos (com a Xbox Game Bar ativada).";
+
+  $("rotOn").checked = s.rotation.enabled;
+  $("rotSecs").value = s.rotation.seconds;
+  // Ordem do rodízio: os marcados na ordem salva, depois os outros
+  const checked = new Set(s.rotation.presets.filter((p) => presets.includes(p)));
+  let order = [...s.rotation.presets.filter((p) => presets.includes(p)), ...presets.filter((p) => !checked.has(p))];
+  const drawRot = () => {
+    const list = $("rotList");
+    list.innerHTML = "";
+    order.forEach((p, i) => {
+      const row = document.createElement("div");
+      row.className = "rot-item";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = checked.has(p);
+      cb.onchange = () => (cb.checked ? checked.add(p) : checked.delete(p));
+      const nm = document.createElement("span");
+      nm.className = "name";
+      nm.textContent = p + (p === res.active ? " (aplicado)" : "");
+      row.append(cb, nm);
+      for (const [label, dir] of [["▲", -1], ["▼", 1]]) {
+        const b = document.createElement("button");
+        b.textContent = label;
+        b.title = dir < 0 ? "Mostrar antes" : "Mostrar depois";
+        b.disabled = i + dir < 0 || i + dir >= order.length;
+        b.onclick = () => {
+          [order[i], order[i + dir]] = [order[i + dir], order[i]];
+          drawRot();
+        };
+        row.appendChild(b);
+      }
+      list.appendChild(row);
+    });
+  };
+  drawRot();
+  $("autoNow").textContent = monitor.state === "stopped" ? "· monitor parado"
+    : `· na tela agora: ${monitor.theme}${monitor.reason !== "normal" ? ` (${monitor.reason})` : ""}`;
+
+  const close = () => { modal.classList.add("hidden"); S.modalClose = null; };
+  $("autoClose").onclick = close;
+  $("autoCancel").onclick = close;
+  modal.onmousedown = (e) => { if (e.target === modal) close(); };
+  $("autoSave").onclick = async () => {
+    const settings = {
+      game: {
+        enabled: $("gameOn").checked, preset: gp.value, fullscreen: $("gameFull").checked,
+        enter_seconds: parseInt($("gameEnter").value, 10) || 3, exit_seconds: parseInt($("gameExit").value, 10) || 20,
+      },
+      rotation: { enabled: $("rotOn").checked, seconds: parseInt($("rotSecs").value, 10) || 30, presets: order.filter((p) => checked.has(p)) },
+    };
+    try {
+      await api("/api/automation", { settings });
+      close();
+      toast("Automação salva. O monitor aplica em alguns segundos (pode reiniciar uma vez).", "ok");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  };
+  S.modalClose = close;
+  modal.classList.remove("hidden");
 }
 
 // ---------------------------------------------------------------------------
@@ -1030,7 +1167,9 @@ async function refreshLive() {
       info.textContent = "⏹ monitor parado (última imagem)";
       img.style.opacity = "0.4";
     } else {
-      info.textContent = `● ao vivo · preset: ${S.active}`;
+      const theme = decodeURIComponent(res.headers.get("X-Monitor-Theme") || "") || S.active;
+      const reason = decodeURIComponent(res.headers.get("X-Monitor-Reason") || "normal");
+      info.textContent = `● ao vivo · preset: ${theme}${reason !== "normal" ? ` · ${reason}` : ""}`;
       img.style.opacity = "1";
       S.appliedAt = 0;
     }
@@ -1045,8 +1184,8 @@ async function refreshLive() {
 // Teclado e eventos
 // ---------------------------------------------------------------------------
 function onKey(ev) {
-  if (S.picking) {
-    if (ev.key === "Escape") $("iconClose").click();
+  if (S.modalClose) {
+    if (ev.key === "Escape") S.modalClose();
     return;
   }
   const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName);
@@ -1111,6 +1250,9 @@ async function init() {
   $("btnUndo").onclick = undo;
   $("btnRedo").onclick = redo;
   $("btnClose").onclick = closeEditor;
+  $("btnExport").onclick = exportPreset;
+  $("btnImport").onclick = importPreset;
+  $("btnAuto").onclick = openAutomation;
   $("zoomSelect").onchange = (e) => setZoom(parseFloat(e.target.value));
   $("stage").addEventListener("mousedown", (e) => { if (e.target.id === "overlay" || e.target.id === "stageImg") select(null); });
   window.addEventListener("keydown", onKey);

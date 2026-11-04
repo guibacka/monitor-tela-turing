@@ -1,0 +1,606 @@
+{
+  "name": "ModoJogo",
+  "author": "Guilherme Backa",
+  "width": 480,
+  "height": 320,
+  "orientation": "landscape",
+  "background": {
+    "type": "none",
+    "color": [
+      8,
+      10,
+      14
+    ]
+  },
+  "custom_interval": 3,
+  "items": [
+    {
+      "kind": "panel",
+      "name": "Painel FPS",
+      "x": 12,
+      "y": 36,
+      "w": 456,
+      "h": 122,
+      "radius": 10,
+      "fill": [
+        17,
+        20,
+        27
+      ],
+      "outline": [
+        53,
+        96,
+        33
+      ],
+      "outline_width": 1,
+      "id": "i1"
+    },
+    {
+      "kind": "panel",
+      "name": "Painel GPU",
+      "x": 12,
+      "y": 164,
+      "w": 224,
+      "h": 148,
+      "radius": 10,
+      "fill": [
+        17,
+        20,
+        27
+      ],
+      "outline": [
+        53,
+        96,
+        33
+      ],
+      "outline_width": 1,
+      "id": "i2"
+    },
+    {
+      "kind": "panel",
+      "name": "Painel CPU",
+      "x": 244,
+      "y": 164,
+      "w": 224,
+      "h": 148,
+      "radius": 10,
+      "fill": [
+        17,
+        20,
+        27
+      ],
+      "outline": [
+        114,
+        34,
+        34
+      ],
+      "outline_width": 1,
+      "id": "i3"
+    },
+    {
+      "kind": "data",
+      "source": "WEATHER",
+      "widget": "weather",
+      "x": 12,
+      "y": 8,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 12,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "id": "i4"
+    },
+    {
+      "kind": "data",
+      "source": "TIME",
+      "widget": "text",
+      "x": 468,
+      "y": 12,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 14,
+      "color": [
+        235,
+        235,
+        240
+      ],
+      "anchor": "rt",
+      "format": "HH:mm",
+      "id": "i5"
+    },
+    {
+      "kind": "label",
+      "text": "FPS",
+      "x": 24,
+      "y": 44,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 12,
+      "color": [
+        118,
+        214,
+        74
+      ],
+      "anchor": "la",
+      "id": "i6"
+    },
+    {
+      "kind": "symbol",
+      "icon": "device-gamepad-2",
+      "style": "outline",
+      "x": 50,
+      "y": 42,
+      "size": 16,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "id": "i7"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_FPS",
+      "widget": "text",
+      "x": 244,
+      "y": 75,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 60,
+      "color": [
+        240,
+        240,
+        245
+      ],
+      "anchor": "mt",
+      "show_unit": true,
+      "id": "i8"
+    },
+    {
+      "kind": "data",
+      "source": "ALERT",
+      "widget": "icon",
+      "x": 440,
+      "y": 42,
+      "size": 20,
+      "id": "i10"
+    },
+    {
+      "kind": "label",
+      "text": "GPU",
+      "x": 24,
+      "y": 172,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 14,
+      "color": [
+        118,
+        214,
+        74
+      ],
+      "anchor": "la",
+      "id": "i11"
+    },
+    {
+      "kind": "label",
+      "text": "RTX 5060",
+      "x": 60,
+      "y": 174,
+      "font": "roboto/Roboto-Regular.ttf",
+      "size": 11,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i12"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_FREQ",
+      "widget": "text",
+      "x": 224,
+      "y": 173,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 13,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "anchor": "rt",
+      "show_unit": true,
+      "id": "i13"
+    },
+    {
+      "kind": "label",
+      "text": "USO",
+      "x": 24,
+      "y": 196,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i14"
+    },
+    {
+      "kind": "label",
+      "text": "TEMP",
+      "x": 224,
+      "y": 196,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "ra",
+      "id": "i15"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_PERCENT",
+      "widget": "text",
+      "x": 24,
+      "y": 206,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 30,
+      "color": [
+        240,
+        240,
+        245
+      ],
+      "anchor": "lt",
+      "show_unit": true,
+      "id": "i16"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_TEMP",
+      "widget": "text",
+      "x": 224,
+      "y": 206,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 30,
+      "color": [
+        90,
+        220,
+        120
+      ],
+      "anchor": "rt",
+      "temp_levels": {
+        "AMARELO": 70,
+        "VERMELHO": 80
+      },
+      "id": "i17"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_PERCENT",
+      "widget": "bar",
+      "x": 24,
+      "y": 246,
+      "w": 200,
+      "h": 8,
+      "color": [
+        118,
+        214,
+        74
+      ],
+      "track": [
+        34,
+        38,
+        48
+      ],
+      "id": "i18"
+    },
+    {
+      "kind": "label",
+      "text": "VRAM",
+      "x": 24,
+      "y": 262,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i19"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_VRAM",
+      "widget": "text",
+      "x": 224,
+      "y": 260,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 13,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "anchor": "rt",
+      "id": "i20"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_VRAM",
+      "widget": "bar",
+      "x": 24,
+      "y": 278,
+      "w": 200,
+      "h": 6,
+      "color": [
+        118,
+        214,
+        74
+      ],
+      "track": [
+        34,
+        38,
+        48
+      ],
+      "id": "i21"
+    },
+    {
+      "kind": "symbol",
+      "icon": "bolt",
+      "style": "outline",
+      "x": 22,
+      "y": 290,
+      "size": 14,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "id": "i22"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_POWER",
+      "widget": "text",
+      "x": 38,
+      "y": 291,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 12,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "anchor": "lt",
+      "id": "i23"
+    },
+    {
+      "kind": "label",
+      "text": "CPU",
+      "x": 256,
+      "y": 172,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 14,
+      "color": [
+        255,
+        77,
+        77
+      ],
+      "anchor": "la",
+      "id": "i24"
+    },
+    {
+      "kind": "label",
+      "text": "Ryzen 7 7800X3D",
+      "x": 292,
+      "y": 174,
+      "font": "roboto/Roboto-Regular.ttf",
+      "size": 11,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i25"
+    },
+    {
+      "kind": "data",
+      "source": "CPU_FREQ",
+      "widget": "text",
+      "x": 456,
+      "y": 173,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 13,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "anchor": "rt",
+      "show_unit": true,
+      "id": "i26"
+    },
+    {
+      "kind": "label",
+      "text": "USO",
+      "x": 256,
+      "y": 196,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i27"
+    },
+    {
+      "kind": "label",
+      "text": "TEMP",
+      "x": 456,
+      "y": 196,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "ra",
+      "id": "i28"
+    },
+    {
+      "kind": "data",
+      "source": "CPU_PERCENT",
+      "widget": "text",
+      "x": 256,
+      "y": 206,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 30,
+      "color": [
+        240,
+        240,
+        245
+      ],
+      "anchor": "lt",
+      "show_unit": true,
+      "id": "i29"
+    },
+    {
+      "kind": "data",
+      "source": "CPU_TEMP",
+      "widget": "text",
+      "x": 456,
+      "y": 206,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 30,
+      "color": [
+        90,
+        220,
+        120
+      ],
+      "anchor": "rt",
+      "temp_levels": {
+        "AMARELO": 70,
+        "VERMELHO": 85
+      },
+      "id": "i30"
+    },
+    {
+      "kind": "data",
+      "source": "CPU_PERCENT",
+      "widget": "bar",
+      "x": 256,
+      "y": 246,
+      "w": 200,
+      "h": 8,
+      "color": [
+        255,
+        77,
+        77
+      ],
+      "track": [
+        34,
+        38,
+        48
+      ],
+      "id": "i31"
+    },
+    {
+      "kind": "label",
+      "text": "RAM",
+      "x": 256,
+      "y": 262,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i32"
+    },
+    {
+      "kind": "data",
+      "source": "RAM_USED",
+      "widget": "text",
+      "x": 456,
+      "y": 260,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 13,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "anchor": "rt",
+      "id": "i33"
+    },
+    {
+      "kind": "data",
+      "source": "RAM_USED",
+      "widget": "bar",
+      "x": 256,
+      "y": 278,
+      "w": 200,
+      "h": 6,
+      "color": [
+        77,
+        166,
+        255
+      ],
+      "track": [
+        34,
+        38,
+        48
+      ],
+      "id": "i34"
+    },
+    {
+      "kind": "symbol",
+      "icon": "bolt",
+      "style": "outline",
+      "x": 254,
+      "y": 290,
+      "size": 14,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "id": "i35"
+    },
+    {
+      "kind": "data",
+      "source": "CPU_POWER",
+      "widget": "text",
+      "x": 270,
+      "y": 291,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 12,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "anchor": "lt",
+      "id": "i36"
+    },
+    {
+      "kind": "data",
+      "source": "STATUS_BORDER",
+      "widget": "border",
+      "x": 0,
+      "y": 0,
+      "id": "i37"
+    }
+  ]
+}

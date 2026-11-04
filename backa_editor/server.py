@@ -25,6 +25,7 @@ if not FROZEN:
 os.chdir(ROOT)
 
 from library.backa import layout as L  # noqa: E402
+from library.backa import automation as A  # noqa: E402
 
 HOST = "127.0.0.1"
 # Endereço amigável: os navegadores enviam qualquer *.localhost para o próprio PC, sem configurar nada no Windows.
@@ -61,22 +62,109 @@ def set_active_theme(name: str):
     path.write_text(text, encoding="utf-8")
 
 
-def monitor_state() -> str:
-    # running / reloading / stopped, a partir dos arquivos que o monitor grava
+def monitor_info() -> dict:
+    # Estado do monitor (running / reloading / stopped) e o preset que está na tela agora (rodízio/modo jogo)
     try:
-        st = json.loads((ROOT / ".monitor.state").read_text())
+        st = json.loads((ROOT / ".monitor.state").read_text(encoding="utf-8"))
     except Exception:
         st = {"state": "stopped", "time": 0}
+    info = {"theme": st.get("theme") or active_theme(), "reason": st.get("reason") or "normal"}
     if st.get("state") == "reloading" and time.time() - st.get("time", 0) < 40:
-        return "reloading"
+        return dict(info, state="reloading")
     try:
         import psutil
         pid = int((ROOT / ".monitor.pid").read_text())
         if psutil.pid_exists(pid) and psutil.Process(pid).name().lower() in ("python.exe", "pythonw.exe", "python", "main.exe"):
-            return "running"
+            return dict(info, state="running")
     except Exception:
         pass
-    return "stopped"
+    return dict(info, state="stopped", theme=active_theme(), reason="normal")
+
+
+def monitor_state() -> str:
+    return monitor_info()["state"]
+
+
+# --- Exportar / importar presets (.zip com o layout.json e as imagens) ---
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"}
+ZIP_MAX_FILES = 300
+ZIP_MAX_BYTES = 60 * 1024 * 1024
+
+
+def export_preset(name: str) -> bytes:
+    import zipfile
+    folder = L.THEMES_DIR / name
+    if not (folder / L.LAYOUT_FILE).is_file():
+        raise ValueError("Preset não encontrado")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.write(folder / L.LAYOUT_FILE, L.LAYOUT_FILE)
+        for f in sorted((folder / "assets").rglob("*")) if (folder / "assets").is_dir() else []:
+            if f.is_file() and f.suffix.lower() in IMAGE_EXT:
+                z.write(f, "assets/" + f.relative_to(folder / "assets").as_posix())
+        if (folder / "preview.png").is_file():
+            z.write(folder / "preview.png", "preview.png")
+    return buf.getvalue()
+
+
+def read_preset_zip(raw: bytes):
+    # Lê o .zip com cuidado: só layout.json e imagens em assets/, sem caminhos estranhos, com limite de tamanho.
+    # Aceita o layout.json na raiz ou dentro de uma única pasta (zip feito "compactando a pasta").
+    import zipfile
+    try:
+        z = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile:
+        raise ValueError("O arquivo não é um .zip válido")
+    entries = [i for i in z.infolist() if not i.is_dir()]
+    if len(entries) > ZIP_MAX_FILES or sum(i.file_size for i in entries) > ZIP_MAX_BYTES:
+        raise ValueError("O .zip é grande demais para um preset")
+    layouts = [i.filename for i in entries if i.filename.replace("\\", "/").rsplit("/", 1)[-1] == L.LAYOUT_FILE]
+    if not layouts:
+        raise ValueError("Não encontrei o layout.json dentro do .zip (exporte o preset pelo editor)")
+    prefix = min(layouts, key=len).replace("\\", "/")[:-len(L.LAYOUT_FILE)]
+    try:
+        layout = json.loads(z.read(min(layouts, key=len)).decode("utf-8"))
+    except Exception:
+        raise ValueError("O layout.json do .zip está corrompido")
+    if not isinstance(layout, dict) or not isinstance(layout.get("items"), list):
+        raise ValueError("O layout.json do .zip não é de um preset deste editor")
+    assets = {}
+    for i in entries:
+        name = i.filename.replace("\\", "/")
+        if not name.startswith(prefix + "assets/"):
+            continue
+        rel = name[len(prefix + "assets/"):]
+        parts = rel.split("/")
+        if not rel or any(part in ("", ".", "..") for part in parts) or ":" in rel:
+            continue
+        if Path(rel).suffix.lower() not in IMAGE_EXT:
+            continue
+        assets[rel] = z.read(i)
+    return layout, assets
+
+
+def import_preset(raw: bytes, name: str, overwrite: bool) -> dict:
+    import shutil
+    layout, assets = read_preset_zip(raw)
+    folder = L.THEMES_DIR / name
+    if folder.exists() and not overwrite:
+        n = 2
+        while (L.THEMES_DIR / f"{name} {n}").exists():
+            n += 1
+        return {"exists": True, "suggested": f"{name} {n}"[:40]}
+    problems = L.validate_layout(layout)
+    if problems:
+        return {"problems": problems}
+    if (folder / "assets").is_dir():
+        shutil.rmtree(folder / "assets")
+    for rel, data in assets.items():
+        dest = (folder / "assets" / rel).resolve()
+        if (folder / "assets").resolve() not in dest.parents:
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+    L.save_layout(name, layout)
+    return {"name": name, "problems": L.compile_layout(name)}
 
 
 def png_data_url(img) -> str:
@@ -167,21 +255,39 @@ class Handler(BaseHTTPRequestHandler):
                                    "fonts": L.list_fonts()})
             if url.path == "/api/icons":
                 return self._json(L.symbol_catalog())
+            if url.path == "/api/automation":
+                return self._json({"settings": A.load_settings(), "presets": L.list_presets(), "active": active_theme(),
+                                   "games": A.known_game_names(), "monitor": monitor_info()})
+            if url.path == "/api/export":
+                name = self._preset_name(q.get("name"))
+                body = export_preset(name)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if url.path == "/api/presets":
                 return self._json({"presets": L.list_presets(), "active": active_theme()})
             if url.path == "/api/preset":
                 return self._json(L.load_layout(self._preset_name(q.get("name"))))
             if url.path == "/api/live":
-                # Última imagem da tela real + estado do monitor (nos cabeçalhos)
-                file = ROOT / f".live-preview-{active_theme()}.png"
-                state = monitor_state()
+                # Última imagem da tela real + estado do monitor (nos cabeçalhos).
+                # Com rodízio/modo jogo, o preset na tela pode ser outro que o do config.yaml
+                from urllib.parse import quote
+                info = monitor_info()
+                state = info["state"]
+                file = ROOT / f".live-preview-{info['theme']}.png"
                 if not file.exists():
-                    return self._json({"state": state}, 404)
+                    return self._json(info, 404)
                 body = file.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "image/png")
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("X-Monitor-State", state)
+                self.send_header("X-Monitor-Theme", quote(info["theme"]))
+                self.send_header("X-Monitor-Reason", quote(info["reason"]))
                 self.send_header("X-Live-Age", f"{time.time() - file.stat().st_mtime:.1f}")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -214,6 +320,27 @@ class Handler(BaseHTTPRequestHandler):
                 if path == "/api/apply" and not problems:
                     set_active_theme(name)
                 return self._json({"problems": problems, "active": active_theme()})
+            if path == "/api/automation":
+                settings = A.normalize(data.get("settings"))
+                presets = set(L.list_presets())
+                settings["rotation"]["presets"] = [p for p in settings["rotation"]["presets"] if p in presets]
+                if settings["game"]["preset"] and settings["game"]["preset"] not in presets:
+                    raise ValueError("Preset do modo jogo não encontrado")
+                if settings["rotation"]["enabled"] and len(settings["rotation"]["presets"]) < 2:
+                    raise ValueError("Escolha pelo menos 2 presets para o rodízio")
+                if settings["game"]["enabled"] and not settings["game"]["preset"]:
+                    raise ValueError("Escolha o preset do modo jogo")
+                return self._json({"settings": A.save_settings(settings)})
+            if path == "/api/import":
+                name = self._preset_name(data["name"])
+                raw = base64.b64decode(data["data"].split(",", 1)[-1])
+                return self._json(import_preset(raw, name, bool(data.get("overwrite"))))
+            if path == "/api/import-info":
+                # Nome sugerido para o preset que está no .zip
+                layout, assets = read_preset_zip(base64.b64decode(data["data"].split(",", 1)[-1]))
+                suggested = re.sub(r"[^A-Za-z0-9 _\-]", "", str(layout.get("name") or Path(data.get("filename", "")).stem))[:40]
+                return self._json({"suggested": suggested.strip() or "Importado", "images": len(assets),
+                                   "items": len(layout["items"])})
             if path == "/api/upload":
                 name = self._preset_name(data["name"])
                 filename = re.sub(r"[^A-Za-z0-9_.\-]", "_", Path(data["filename"]).name)

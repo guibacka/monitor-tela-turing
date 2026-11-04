@@ -225,6 +225,10 @@ def display_themed_line_graph(theme_data, values):
 
     line_color = theme_data.get("LINE_COLOR", (0, 0, 0))
 
+    # [Backa] O histórico pode ser maior que o deste gráfico (outro preset usa mais pontos): mostra só os mais recentes
+    if theme_data.get("HISTORY_SIZE"):
+        values = values[-int(theme_data["HISTORY_SIZE"]):]
+
     display.lcd.DisplayLineGraph(
         x=theme_data.get("X", 0),
         y=theme_data.get("Y", 0),
@@ -247,8 +251,10 @@ def display_themed_line_graph(theme_data, values):
 
 def save_last_value(value: float, last_values: List[float], history_size: int):
     # Initialize last values list the first time with given size
-    if len(last_values) != history_size:
-        last_values[:] = last_values_list(size=history_size)
+    # [Backa] Ao trocar de preset o tamanho pode mudar: em vez de apagar o histórico, só aumenta quando precisa
+    # (os gráficos mostram os pontos mais recentes, ver display_themed_line_graph)
+    if len(last_values) < history_size:
+        last_values[:0] = last_values_list(size=history_size - len(last_values))
     # Store the value to the list that can then be used for line graph
     last_values.append(value)
     # Also remove the oldest value from list

@@ -90,6 +90,11 @@ try:
         import win32gui
 
     from library.log import logger
+    # [Backa] Antes de importar o agendador (os intervalos são fixados na importação): mescla os intervalos dos
+    # presets do rodízio e do modo jogo, para a tela trocar entre eles sem reiniciar
+    from library import config as backa_cfg
+    from library.backa import automation as backa_auto
+    BACKA_RUNNING_SIG = backa_auto.merge_intervals(backa_cfg, backa_cfg.CONFIG_DATA["config"]["THEME"], logger=logger)
     import library.scheduler as scheduler
     from library.display import display
 
@@ -203,24 +208,30 @@ if __name__ == "__main__":
 
     STATE_FILE = MAIN_DIRECTORY / ".monitor.state"
 
+    # [Backa] Preset do config.yaml ("base") x preset que está na tela agora ("showing": rodízio ou modo jogo)
+    import threading as backa_threading
+    BACKA = {"base": backa_cfg.CONFIG_DATA["config"]["THEME"], "showing": backa_cfg.CONFIG_DATA["config"]["THEME"],
+             "reason": "normal", "settings": backa_auto.load_settings(), "base_applied": False}
+    SWITCH_LOCK = backa_threading.RLock()
+
     def write_state(state: str):
-        # Estado do monitor para o editor: running / reloading / stopped
+        # Estado do monitor para o editor: running / reloading / stopped, e o preset que está na tela
+        import json as _json
         try:
-            STATE_FILE.write_text('{"state": "%s", "time": %f}' % (state, time.time()))
+            STATE_FILE.write_text(_json.dumps({"state": state, "time": time.time(), "theme": BACKA["showing"],
+                                               "base": BACKA["base"], "reason": BACKA["reason"]}, ensure_ascii=False),
+                                  encoding="utf-8")
         except Exception:
             pass
 
     def schedule_signature(theme_data):
         # Intervalos de cada tarefa agendada: definidos ao iniciar o programa, não mudam sem reiniciar
-        stats_data = theme_data["STATS"]
-        cpu = stats_data["CPU"]
-        return (tuple(cpu[k].get("INTERVAL", 0) for k in ("PERCENTAGE", "FREQUENCY", "LOAD", "TEMPERATURE", "FAN_SPEED")) +
-                tuple(stats_data.get(k, {}).get("INTERVAL", 0)
-                      for k in ("GPU", "MEMORY", "DISK", "NET", "DATE", "UPTIME", "CUSTOM", "WEATHER", "PING")))
+        return backa_auto.signature(theme_data)
 
-    def hot_reload_theme(theme_name: str) -> bool:
+    def hot_reload_theme(theme_name: str, automatic: bool = False):
         # Troca o tema sem reiniciar o programa (~3 s, quase só o tempo de desenhar o fundo).
-        # Só é possível se as tarefas agendadas continuam as mesmas; senão, retorna False e o monitor reinicia.
+        # Retorna True (trocou), False (precisa reiniciar: os intervalos dos sensores mudaram) ou
+        # None (preset inválido ou incompatível: fica como está).
         import copy
         from library import config
         import library.sensors.sensors_custom as sensors_custom
@@ -229,21 +240,31 @@ if __name__ == "__main__":
             candidate = copy.deepcopy(candidate)
             config.copy_default(copy.deepcopy(config.THEME_DEFAULT), candidate)
         except Exception as e:
-            logger.warning("Tema novo inválido (%s): reiniciando" % e)
+            logger.warning("Preset %s inválido (%s): mantendo a tela como está" % (theme_name, e))
+            return None
+        if candidate["display"].get("DISPLAY_ORIENTATION") != config.THEME_DATA["display"].get("DISPLAY_ORIENTATION"):
+            if automatic:
+                logger.warning("Preset %s tem outra orientação de tela: o rodízio/modo jogo vai pular ele" % theme_name)
+                return None
             return False
-        if schedule_signature(candidate) != schedule_signature(config.THEME_DATA) or \
-                candidate["display"].get("DISPLAY_ORIENTATION") != config.THEME_DATA["display"].get("DISPLAY_ORIENTATION"):
+        # Os intervalos que o monitor usa precisam continuar valendo para os presets envolvidos
+        names = backa_auto.involved_presets(BACKA["settings"], BACKA["base"]) + [theme_name]
+        if backa_auto.merged_signature(config, list(dict.fromkeys(names))) != BACKA_RUNNING_SIG:
             return False
-        write_state("reloading")
-        logger.info("Aplicando o tema %s sem reiniciar" % theme_name)
-        config.CONFIG_DATA["config"]["THEME"] = theme_name
-        config.load_theme()
-        display.lcd.image_cache.clear()
-        sensors_custom.backa_reset_caches()
-        display.display_static_images()
-        display.display_static_text()
-        wait_for_empty_queue(10)
-        write_state("running")
+        from library.backa.themelock import THEME_LOCK
+        with SWITCH_LOCK, THEME_LOCK.writing():
+            # Com a trava, nenhum sensor desenha com o tema antigo por cima do fundo novo
+            BACKA["showing"] = theme_name
+            write_state("reloading")
+            logger.info("Mostrando o preset %s (%s)" % (theme_name, BACKA["reason"]))
+            config.CONFIG_DATA["config"]["THEME"] = theme_name
+            config.load_theme()
+            display.lcd.image_cache.clear()
+            sensors_custom.backa_reset_caches()
+            display.display_static_images()
+            display.display_static_text()
+            wait_for_empty_queue(10)
+            write_state("running")
         return True
 
     def restart_monitor(tray_icon=None):
@@ -261,6 +282,12 @@ if __name__ == "__main__":
         backa_launch("main.py", "main.exe", env=env)
         os._exit(0)
 
+    def intervals_still_valid() -> bool:
+        # Os presets que podem aparecer na tela ainda cabem nos intervalos com que o monitor iniciou?
+        from library import config
+        names = backa_auto.involved_presets(BACKA["settings"], BACKA["base"])
+        return backa_auto.merged_signature(config, names) in (BACKA_RUNNING_SIG, None)
+
     def watch_config_files_safe(tray_icon=None):
         # Mantém o vigia de arquivos vivo: se der erro, registra no log e recomeça
         import traceback
@@ -272,8 +299,8 @@ if __name__ == "__main__":
                 time.sleep(2)
 
     def watch_config_files(tray_icon=None):
-        # Vigia config.yaml, os arquivos do tema ativo e o código dos sensores.
-        #   brilho -> aplicado na hora | tema (arquivos ou troca de preset) -> sem reiniciar, se possível
+        # Vigia config.yaml, automacao.json, os arquivos dos presets na tela e o código dos sensores.
+        #   brilho -> aplicado na hora | preset (arquivos ou troca) -> sem reiniciar, se possível
         #   resto do config.yaml ou código dos sensores -> reinicia o monitor
         import copy
         import yaml
@@ -281,13 +308,24 @@ if __name__ == "__main__":
 
         config_file = MAIN_DIRECTORY / "config.yaml"
         sensors_file = MAIN_DIRECTORY / "library" / "sensors" / "sensors_custom.py"
+        automation_file = backa_auto.SETTINGS_FILE
+        themes_dir = MAIN_DIRECTORY / "res" / "themes"
+
+        def theme_files(name):
+            return [themes_dir / name / "theme.yaml", themes_dir / name / "background.png"]
 
         def watched():
-            theme_dir = MAIN_DIRECTORY / "res" / "themes" / config.CONFIG_DATA["config"]["THEME"]
-            return [config_file, sensors_file, theme_dir / "theme.yaml", theme_dir / "background.png"]
+            files = [config_file, sensors_file, automation_file] + theme_files(BACKA["showing"])
+            if BACKA["base"] != BACKA["showing"]:
+                files += theme_files(BACKA["base"])
+            return files
 
         def snapshot(files):
             return {f: (f.stat().st_mtime if f.exists() else 0) for f in files}
+
+        def changed_files(files, before, after):
+            # Arquivos que acabaram de entrar na lista (o preset na tela mudou) não contam como alterados
+            return [f for f in files if f in before and after[f] != before[f]]
 
         last = snapshot(watched())
         # Força conferir o config.yaml logo na primeira volta: ele pode ter mudado enquanto o monitor iniciava
@@ -296,16 +334,18 @@ if __name__ == "__main__":
             time.sleep(0.5)
             files = watched()
             current = snapshot(files)
-            if current == last:
+            if not changed_files(files, last, current):
+                last = current
                 continue
             time.sleep(0.5)  # espera os arquivos terminarem de ser gravados
             current = snapshot(files)
-            changed = [f for f in files if current[f] != last.get(f)]
+            changed = changed_files(files, last, current)
             last = current
 
             if sensors_file in changed:
                 restart_monitor(tray_icon)
-            new_theme = config.CONFIG_DATA["config"]["THEME"]
+            new_base = BACKA["base"]
+            reverse_changed = False
             if config_file in changed:
                 try:
                     with open(config_file, encoding="utf-8") as f:
@@ -313,7 +353,7 @@ if __name__ == "__main__":
                     new_rest, old_rest = copy.deepcopy(new_cfg), copy.deepcopy(config.CONFIG_DATA)
                     new_brightness = new_rest["display"].pop("BRIGHTNESS")
                     old_rest["display"].pop("BRIGHTNESS")
-                    new_theme = new_rest["config"].pop("THEME")
+                    new_base = new_rest["config"].pop("THEME")
                     old_rest["config"].pop("THEME")
                     new_reverse = new_rest["display"].pop("DISPLAY_REVERSE", False)
                     old_rest["display"].pop("DISPLAY_REVERSE", None)
@@ -334,14 +374,81 @@ if __name__ == "__main__":
                     config.CONFIG_DATA["display"]["DISPLAY_REVERSE"] = bool(new_reverse)
                     display.lcd.SetOrientation(display_module._get_theme_orientation())
                     logger.info("Tela %s" % ("invertida" if new_reverse else "na orientação normal"))
-            else:
-                reverse_changed = False
 
-            theme_files_changed = any(f not in (config_file, sensors_file) for f in changed)
-            if new_theme != config.CONFIG_DATA["config"]["THEME"] or theme_files_changed or reverse_changed:
-                if not hot_reload_theme(new_theme):
+            automation_changed = automation_file in changed
+            if automation_changed:
+                BACKA["settings"] = backa_auto.load_settings()
+                logger.info("Automação da tela alterada: %s" % BACKA["settings"])
+            base_changed = new_base != BACKA["base"]
+            if base_changed:
+                # Outro preset aplicado (editor/configurador): o controlador da automação mostra ele em seguida
+                BACKA["base"] = new_base
+                BACKA["base_applied"] = True
+            showing_changed = any(f in changed for f in theme_files(BACKA["showing"]))
+            base_files_changed = BACKA["base"] != BACKA["showing"] and any(f in changed for f in theme_files(BACKA["base"]))
+
+            if (automation_changed or base_changed or showing_changed or base_files_changed) and not intervals_still_valid():
+                # Algum preset envolvido passou a precisar de outros intervalos de atualização
+                restart_monitor(tray_icon)
+            if (showing_changed or reverse_changed) and not (base_changed and BACKA["base"] != BACKA["showing"]):
+                # O preset que está na tela foi salvo de novo (ou a tela foi invertida): redesenha
+                if hot_reload_theme(BACKA["showing"]) is False:
                     restart_monitor(tray_icon)
-                last = snapshot(watched())
+            last = snapshot(watched())
+
+    def backa_automation_loop(tray_icon=None):
+        # [Backa] Decide qual preset fica na tela: modo jogo > rodízio > preset do config.yaml
+        import traceback
+        import library.sensors.sensors_custom as sensors_custom
+        detector = backa_auto.GameDetector()
+        rotation = {"current": BACKA["base"], "since": time.time()}
+        skip = {}  # presets com problema: ficam de fora por um tempo
+        while True:
+            time.sleep(1)
+            try:
+                settings, now = BACKA["settings"], time.time()
+                game = backa_auto.game_preset(settings)
+                in_game = bool(game) and skip.get(game, 0) < now and detector.poll(
+                    settings["game"], fps_fn=sensors_custom.current_fps, fps_enabled=sensors_custom._fps_enabled())
+                if not game:
+                    detector.reset()
+                rlist = [p for p in backa_auto.rotation_list(settings) if skip.get(p, 0) < now]
+                if BACKA.pop("base_applied", False):
+                    # Preset recém-aplicado: aparece agora, e o rodízio segue a partir dele
+                    rotation.update(current=BACKA["base"], since=now)
+                    BACKA["base_applied"] = False
+                if in_game:
+                    target, reason = game, "modo jogo: %s" % detector.name
+                    rotation["since"] = now  # ao sair do jogo, o rodízio recomeça a contar
+                elif len(rlist) >= 2:
+                    if rotation["current"] not in rlist and rotation["current"] != BACKA["base"]:
+                        rotation.update(current=rlist[0], since=now)
+                    elif now - rotation["since"] >= settings["rotation"]["seconds"]:
+                        i = rlist.index(rotation["current"]) + 1 if rotation["current"] in rlist else 0
+                        rotation.update(current=rlist[i % len(rlist)], since=now)
+                    target, reason = rotation["current"], "rodízio"
+                else:
+                    target, reason = BACKA["base"], "normal"
+                    rotation.update(current=BACKA["base"])
+                if target == BACKA["showing"]:
+                    if BACKA["reason"] != reason:
+                        BACKA["reason"] = reason
+                        write_state("running")
+                    continue
+                if skip.get(target, 0) > now:
+                    continue  # deu problema há pouco: tenta de novo depois
+                BACKA["reason"] = reason
+                result = hot_reload_theme(target, automatic=target != BACKA["base"])
+                if result is None:
+                    skip[target] = now + 60
+                elif result is False:
+                    if intervals_still_valid():
+                        skip[target] = now + 60
+                    else:
+                        restart_monitor(tray_icon)
+            except Exception:
+                logger.error("Automação da tela: " + traceback.format_exc().replace("\n", " | "))
+                time.sleep(5)
 
     def on_editor_tray(tray_icon, item):
         # [Backa] Abre o editor visual de presets no navegador (se já estiver aberto, só abre a página)
@@ -532,6 +639,7 @@ if __name__ == "__main__":
         PID_FILE.write_text(str(os.getpid()))
         write_state("running")
         threading.Thread(target=watch_config_files_safe, args=(tray_icon,), daemon=True).start()
+        threading.Thread(target=backa_automation_loop, args=(tray_icon,), daemon=True, name="Automacao").start()
         threading.Thread(target=save_live_preview, daemon=True).start()
     else:
         logger.info("Theme screenshots mode enabled - program will run %d iterations then close." % args.theme_screenshots)

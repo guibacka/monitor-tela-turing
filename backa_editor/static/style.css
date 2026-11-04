@@ -136,6 +136,19 @@ input[type=text], select { min-width: 0; }
 .icon-cell .nm { font-size: 10px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon-foot { margin-top: 14px; }
 
+/* Automação */
+.auto-box { width: min(640px, 94vw); height: auto; max-height: 88vh; }
+.auto-sec { padding: 10px 0 14px; border-bottom: 1px solid var(--line); }
+.auto-sec:last-child { border-bottom: none; }
+.auto-sec .field { grid-template-columns: 130px 1fr; }
+.auto-sec > .check { margin: 8px 0 2px; }
+.check.big { color: var(--text); font-weight: 600; font-size: 14px; }
+.rot-list { display: flex; flex-direction: column; gap: 3px; }
+.rot-item { display: flex; align-items: center; gap: 6px; }
+.rot-item .name { flex: 1; }
+.rot-item button { padding: 1px 6px; font-size: 11px; }
+.modal-foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); }
+
 .toast {
   position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
   background: #222834; border: 1px solid var(--line); padding: 9px 16px; border-radius: 8px; box-shadow: 0 6px 20px #0008;

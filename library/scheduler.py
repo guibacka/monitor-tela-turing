@@ -50,8 +50,10 @@ def async_job(threadname=None):
     return decorator
 
 
-def schedule(interval):
+def schedule(interval, theme_lock=True):
     """ wrapper to schedule asynchronous threads """
+    # [Backa] theme_lock: a atualização do sensor não roda no meio de uma troca de tema (ver library/backa/themelock.py)
+    from library.backa.themelock import THEME_LOCK
 
     def decorator(func):
         """ Decorator to extend periodic """
@@ -62,7 +64,11 @@ def schedule(interval):
                 # If the program is not stopping: re-schedule the task for future execution
                 scheduler.enter(periodic_interval, 1, periodic,
                                 (scheduler, periodic_interval, action, actionargs))
-            action(*actionargs)
+            if theme_lock:
+                with THEME_LOCK.reading():
+                    action(*actionargs)
+            else:
+                action(*actionargs)
 
         @wraps(func)
         def wrap(
@@ -186,7 +192,7 @@ def PingStats():
 
 
 @async_job("Queue_Handler")
-@schedule(timedelta(milliseconds=1).total_seconds())
+@schedule(timedelta(milliseconds=1).total_seconds(), theme_lock=False)
 def QueueHandler():
     # Do next action waiting in the queue
     if STOPPING:

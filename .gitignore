@@ -147,3 +147,6 @@ external/LibreHardwareMonitor/LibreHardwareMonitorLib.sys
 .monitor.pid
 .live-preview-*.png
 .monitor.state
+# Configurações locais da automação da tela (rodízio / modo jogo), gravadas pelo editor
+automacao.json
+automacao.tmp
