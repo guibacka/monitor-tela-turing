@@ -1,3 +1,30 @@
+# Monitor da Tela Turing (versão Backa)
+
+Versão personalizada do [turing-smart-screen-python](https://github.com/mathoudebine/turing-smart-screen-python) para a **Turing Smart Screen 3,5" (revisão A)**, em português:
+
+- **Editor de tela no navegador** (`http://monitor.localhost:8765`): adicionar, mover, redimensionar e remover itens, trocar o fundo e salvar presets.
+- Sensores extras: temperaturas com cores por nível, VRAM, saúde e temperatura dos SSDs, potência de CPU/GPU, clima (Open-Meteo), ícone de alerta, borda de status e **FPS** do jogo em primeiro plano (PresentMon).
+- Recarrega o tema/configuração sem reiniciar, volta sozinho quando a tela é desconectada e reconectada, e só deixa um monitor rodando por vez.
+- Inicia com o Windows por uma tarefa agendada (como administrador, sem pedir confirmação).
+
+## Instalação
+
+Baixe o instalador `monitor-tela-turing-X.Y.Z-windows.exe` na aba **Releases** (ou nos artefatos da última execução do workflow **Gerar instalador do Windows**) e siga as etapas. O instalador:
+
+- copia os programas para `C:\Program Files\Monitor da Tela Turing`;
+- cria a inicialização automática e os atalhos **Editor de Tela**, **Iniciar Monitor da Tela** e **Configurar Monitor da Tela**;
+- oferece instalar o driver **PawnIO**, necessário para ler temperaturas.
+
+Numa atualização, temas e configuração ficam como estão, a não ser que você marque essas opções.
+
+## Gerar uma nova versão
+
+Crie uma Release com uma tag como `v1.0.1`: o GitHub Actions gera o instalador e o zip portátil e anexa os dois à Release. Para testar sem criar uma Release, use **Actions > Gerar instalador do Windows > Run workflow**.
+
+Licença: GPL-3.0, como o projeto original. O PresentMon (Intel, licença MIT) vai junto em `external/PresentMon`.
+
+---
+
 # ![Icon](https://raw.githubusercontent.com/mathoudebine/turing-smart-screen-python/main/res/icons/monitor-icon-17865/24.png) turing-smart-screen-python
 
 > [!WARNING]

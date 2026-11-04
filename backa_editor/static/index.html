@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editor de Tela</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-token="{{TOKEN}}">
+  <header class="topbar">
+    <div class="brand">Editor de Tela <span class="muted">Turing 3,5"</span></div>
+    <div class="group">
+      <label class="muted" for="presetSelect">Preset</label>
+      <select id="presetSelect"></select>
+      <button id="btnNew" title="Criar um preset novo">Novo</button>
+      <button id="btnSave" title="Salvar (Ctrl+S)">Salvar</button>
+      <button id="btnSaveAs">Salvar como…</button>
+      <button id="btnApply" class="primary" title="Salvar e mostrar na tela de verdade">Aplicar na tela</button>
+    </div>
+    <div class="group">
+      <button id="btnUndo" title="Desfazer (Ctrl+Z)">↶</button>
+      <button id="btnRedo" title="Refazer (Ctrl+Y)">↷</button>
+      <label class="muted" for="zoomSelect">Zoom</label>
+      <select id="zoomSelect"><option value="1">100%</option><option value="1.5">150%</option><option value="2" selected>200%</option><option value="2.5">250%</option></select>
+      <label class="check"><input type="checkbox" id="snapCheck" checked> Grade de 4 px</label>
+    </div>
+    <div class="status" id="statusText"></div>
+    <button id="btnClose" class="danger" title="Fecha o editor e libera a porta (o monitor da tela continua rodando)">Fechar editor</button>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar left">
+      <section>
+        <h2>Adicionar</h2>
+        <div id="palette"></div>
+      </section>
+    </aside>
+
+    <section class="center">
+      <div class="stage-wrap">
+        <div class="stage" id="stage">
+          <img id="stageImg" alt="Prévia do tema" draggable="false">
+          <div id="overlay"></div>
+        </div>
+      </div>
+      <div id="problems" class="problems hidden"></div>
+      <div class="hint muted">Clique para selecionar · Alt+clique pega o item de baixo · arraste para mover (guias rosa alinham; Shift desliga) · cantos redimensionam (em textos e ícones, o tamanho) · duplo clique edita um texto · setas movem 1 px (Shift: 10 px) · Delete remove · Ctrl+D duplica</div>
+      <div class="live">
+        <div class="live-head"><h2>Tela real agora</h2><span class="muted" id="liveInfo"></span></div>
+        <img id="liveImg" alt="Tela real" class="hidden">
+        <div id="liveEmpty" class="muted">O monitor não está rodando — a tela real aparece aqui quando ele estiver ativo.</div>
+      </div>
+    </section>
+
+    <aside class="sidebar right">
+      <section>
+        <h2 id="propsTitle">Propriedades</h2>
+        <div id="props"></div>
+      </section>
+      <section>
+        <h2>Camadas <span class="muted small">(de cima para baixo)</span></h2>
+        <div id="layers"></div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <input type="file" id="fileInput" accept="image/*" class="hidden">
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,839 @@
+{
+  "name": "BackaRGB",
+  "author": "Guilherme Backa",
+  "width": 480,
+  "height": 320,
+  "orientation": "landscape",
+  "background": {
+    "type": "color",
+    "color": [
+      8,
+      10,
+      14
+    ]
+  },
+  "custom_interval": 3,
+  "items": [
+    {
+      "kind": "panel",
+      "name": "Painel CPU",
+      "x": 12,
+      "y": 40,
+      "w": 224,
+      "h": 132,
+      "radius": 10,
+      "fill": [
+        17,
+        20,
+        27
+      ],
+      "outline": [
+        114,
+        34,
+        34
+      ],
+      "outline_width": 1,
+      "id": "i1"
+    },
+    {
+      "kind": "panel",
+      "name": "Painel GPU",
+      "x": 244,
+      "y": 40,
+      "w": 224,
+      "h": 132,
+      "radius": 10,
+      "fill": [
+        17,
+        20,
+        27
+      ],
+      "outline": [
+        53,
+        96,
+        33
+      ],
+      "outline_width": 1,
+      "id": "i2"
+    },
+    {
+      "kind": "panel",
+      "name": "Painel RAM",
+      "x": 12,
+      "y": 180,
+      "w": 224,
+      "h": 132,
+      "radius": 10,
+      "fill": [
+        17,
+        20,
+        27
+      ],
+      "outline": [
+        34,
+        74,
+        114
+      ],
+      "outline_width": 1,
+      "id": "i3"
+    },
+    {
+      "kind": "panel",
+      "name": "Painel discos",
+      "x": 244,
+      "y": 180,
+      "w": 224,
+      "h": 132,
+      "radius": 10,
+      "fill": [
+        17,
+        20,
+        27
+      ],
+      "outline": [
+        81,
+        55,
+        114
+      ],
+      "outline_width": 1,
+      "id": "i4"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo CPU",
+      "text": "CPU",
+      "x": 24,
+      "y": 48,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 14,
+      "color": [
+        255,
+        77,
+        77
+      ],
+      "anchor": "la",
+      "id": "i5"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo Ryzen 7 7800X3D",
+      "text": "Ryzen 7 7800X3D",
+      "x": 60,
+      "y": 50,
+      "font": "roboto/Roboto-Regular.ttf",
+      "size": 11,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i6"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo USO",
+      "text": "USO",
+      "x": 24,
+      "y": 72,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i7"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo TEMP",
+      "text": "TEMP",
+      "x": 224,
+      "y": 72,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "ra",
+      "id": "i8"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo GPU",
+      "text": "GPU",
+      "x": 256,
+      "y": 48,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 14,
+      "color": [
+        118,
+        214,
+        74
+      ],
+      "anchor": "la",
+      "id": "i9"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo RTX 5060",
+      "text": "RTX 5060",
+      "x": 292,
+      "y": 50,
+      "font": "roboto/Roboto-Regular.ttf",
+      "size": 11,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i10"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo USO",
+      "text": "USO",
+      "x": 256,
+      "y": 72,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i11"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo TEMP",
+      "text": "TEMP",
+      "x": 456,
+      "y": 72,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "ra",
+      "id": "i12"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo VRAM",
+      "text": "VRAM",
+      "x": 256,
+      "y": 139,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i13"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo RAM",
+      "text": "RAM",
+      "x": 24,
+      "y": 188,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 14,
+      "color": [
+        77,
+        166,
+        255
+      ],
+      "anchor": "la",
+      "id": "i14"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo DDR5 · 32 GB",
+      "text": "DDR5 · 32 GB",
+      "x": 62,
+      "y": 190,
+      "font": "roboto/Roboto-Regular.ttf",
+      "size": 11,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i15"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo EM USO",
+      "text": "EM USO",
+      "x": 24,
+      "y": 212,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "la",
+      "id": "i16"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo LIVRE",
+      "text": "LIVRE",
+      "x": 224,
+      "y": 212,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 9,
+      "color": [
+        130,
+        138,
+        150
+      ],
+      "anchor": "ra",
+      "id": "i17"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo DISCOS",
+      "text": "DISCOS",
+      "x": 256,
+      "y": 188,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 14,
+      "color": [
+        181,
+        123,
+        255
+      ],
+      "anchor": "la",
+      "id": "i18"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo C:",
+      "text": "C:",
+      "x": 256,
+      "y": 210,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 13,
+      "color": [
+        181,
+        123,
+        255
+      ],
+      "anchor": "la",
+      "id": "i19"
+    },
+    {
+      "kind": "label",
+      "name": "Rótulo J:",
+      "text": "J:",
+      "x": 256,
+      "y": 260,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 13,
+      "color": [
+        181,
+        123,
+        255
+      ],
+      "anchor": "la",
+      "id": "i20"
+    },
+    {
+      "kind": "data",
+      "source": "DATE",
+      "widget": "text",
+      "x": 20,
+      "y": 14,
+      "font": "roboto/Roboto-Bold.ttf",
+      "size": 12,
+      "color": [
+        170,
+        178,
+        190
+      ],
+      "anchor": "lt",
+      "format": "EEE, dd/MM/yyyy",
+      "id": "i21"
+    },
+    {
+      "kind": "data",
+      "source": "WEATHER",
+      "widget": "weather",
+      "x": 172,
+      "y": 8,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 12,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "id": "i22"
+    },
+    {
+      "kind": "data",
+      "source": "ALERT",
+      "widget": "icon",
+      "x": 364,
+      "y": 8,
+      "id": "i23"
+    },
+    {
+      "kind": "data",
+      "source": "TIME",
+      "widget": "text",
+      "x": 460,
+      "y": 13,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 14,
+      "color": [
+        235,
+        235,
+        240
+      ],
+      "anchor": "rt",
+      "format": "HH:mm:ss",
+      "id": "i24"
+    },
+    {
+      "kind": "data",
+      "source": "CPU_FREQ",
+      "widget": "text",
+      "x": 224,
+      "y": 49,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 13,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "anchor": "rt",
+      "show_unit": true,
+      "interval": 3,
+      "id": "i25"
+    },
+    {
+      "kind": "data",
+      "source": "CPU_PERCENT",
+      "widget": "text",
+      "x": 24,
+      "y": 82,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 30,
+      "color": [
+        240,
+        240,
+        245
+      ],
+      "anchor": "lt",
+      "show_unit": true,
+      "interval": 2,
+      "id": "i26"
+    },
+    {
+      "kind": "data",
+      "source": "CPU_TEMP",
+      "widget": "text",
+      "x": 224,
+      "y": 82,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 30,
+      "color": [
+        90,
+        220,
+        120
+      ],
+      "anchor": "rt",
+      "temp_levels": {
+        "AMARELO": 70,
+        "VERMELHO": 85
+      },
+      "id": "i27"
+    },
+    {
+      "kind": "data",
+      "source": "CPU_PERCENT",
+      "widget": "bar",
+      "x": 24,
+      "y": 124,
+      "w": 200,
+      "h": 8,
+      "color": [
+        255,
+        77,
+        77
+      ],
+      "track": [
+        34,
+        38,
+        48
+      ],
+      "id": "i28"
+    },
+    {
+      "kind": "data",
+      "source": "CPU_PERCENT",
+      "widget": "line_graph",
+      "x": 24,
+      "y": 138,
+      "w": 200,
+      "h": 26,
+      "color": [
+        255,
+        77,
+        77
+      ],
+      "line_width": 1,
+      "history": 50,
+      "id": "i29"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_FREQ",
+      "widget": "text",
+      "x": 456,
+      "y": 49,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 13,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "anchor": "rt",
+      "show_unit": true,
+      "id": "i30"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_PERCENT",
+      "widget": "text",
+      "x": 256,
+      "y": 82,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 30,
+      "color": [
+        240,
+        240,
+        245
+      ],
+      "anchor": "lt",
+      "show_unit": true,
+      "id": "i31"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_TEMP",
+      "widget": "text",
+      "x": 456,
+      "y": 82,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 30,
+      "color": [
+        90,
+        220,
+        120
+      ],
+      "anchor": "rt",
+      "temp_levels": {
+        "AMARELO": 70,
+        "VERMELHO": 80
+      },
+      "id": "i32"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_PERCENT",
+      "widget": "bar",
+      "x": 256,
+      "y": 124,
+      "w": 200,
+      "h": 8,
+      "color": [
+        118,
+        214,
+        74
+      ],
+      "track": [
+        34,
+        38,
+        48
+      ],
+      "id": "i33"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_VRAM",
+      "widget": "text",
+      "x": 456,
+      "y": 137,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 13,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "anchor": "rt",
+      "id": "i34"
+    },
+    {
+      "kind": "data",
+      "source": "GPU_VRAM",
+      "widget": "bar",
+      "x": 256,
+      "y": 156,
+      "w": 200,
+      "h": 6,
+      "color": [
+        118,
+        214,
+        74
+      ],
+      "track": [
+        34,
+        38,
+        48
+      ],
+      "id": "i35"
+    },
+    {
+      "kind": "data",
+      "source": "RAM_USED",
+      "widget": "text",
+      "x": 24,
+      "y": 226,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 20,
+      "color": [
+        240,
+        240,
+        245
+      ],
+      "anchor": "lt",
+      "id": "i36"
+    },
+    {
+      "kind": "data",
+      "source": "RAM_FREE",
+      "widget": "text",
+      "x": 224,
+      "y": 226,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 20,
+      "color": [
+        77,
+        166,
+        255
+      ],
+      "anchor": "rt",
+      "id": "i37"
+    },
+    {
+      "kind": "data",
+      "source": "RAM_USED",
+      "widget": "bar",
+      "x": 24,
+      "y": 262,
+      "w": 200,
+      "h": 8,
+      "color": [
+        77,
+        166,
+        255
+      ],
+      "track": [
+        34,
+        38,
+        48
+      ],
+      "id": "i38"
+    },
+    {
+      "kind": "data",
+      "source": "RAM_USED",
+      "widget": "line_graph",
+      "x": 24,
+      "y": 276,
+      "w": 200,
+      "h": 26,
+      "color": [
+        77,
+        166,
+        255
+      ],
+      "line_width": 1,
+      "history": 50,
+      "id": "i39"
+    },
+    {
+      "kind": "data",
+      "source": "DISK_C_FREE",
+      "widget": "text",
+      "x": 456,
+      "y": 210,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 13,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "anchor": "rt",
+      "id": "i40"
+    },
+    {
+      "kind": "data",
+      "source": "DISK_C_FREE",
+      "widget": "bar",
+      "x": 256,
+      "y": 230,
+      "w": 200,
+      "h": 6,
+      "color": [
+        181,
+        123,
+        255
+      ],
+      "track": [
+        34,
+        38,
+        48
+      ],
+      "id": "i41"
+    },
+    {
+      "kind": "data",
+      "source": "DISK_C_HEALTH",
+      "widget": "text",
+      "x": 256,
+      "y": 241,
+      "font": "roboto-mono/RobotoMono-Regular.ttf",
+      "size": 10,
+      "color": [
+        150,
+        158,
+        170
+      ],
+      "anchor": "lt",
+      "id": "i42"
+    },
+    {
+      "kind": "data",
+      "source": "DISK_C_TEMP",
+      "widget": "text",
+      "x": 456,
+      "y": 241,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 10,
+      "color": [
+        90,
+        220,
+        120
+      ],
+      "anchor": "rt",
+      "temp_levels": {
+        "AMARELO": 55,
+        "VERMELHO": 70
+      },
+      "id": "i43"
+    },
+    {
+      "kind": "data",
+      "source": "DISK_J_FREE",
+      "widget": "text",
+      "x": 456,
+      "y": 260,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 13,
+      "color": [
+        220,
+        220,
+        228
+      ],
+      "anchor": "rt",
+      "id": "i44"
+    },
+    {
+      "kind": "data",
+      "source": "DISK_J_FREE",
+      "widget": "bar",
+      "x": 256,
+      "y": 280,
+      "w": 200,
+      "h": 6,
+      "color": [
+        181,
+        123,
+        255
+      ],
+      "track": [
+        34,
+        38,
+        48
+      ],
+      "id": "i45"
+    },
+    {
+      "kind": "data",
+      "source": "DISK_J_HEALTH",
+      "widget": "text",
+      "x": 256,
+      "y": 291,
+      "font": "roboto-mono/RobotoMono-Regular.ttf",
+      "size": 10,
+      "color": [
+        150,
+        158,
+        170
+      ],
+      "anchor": "lt",
+      "id": "i46"
+    },
+    {
+      "kind": "data",
+      "source": "DISK_J_TEMP",
+      "widget": "text",
+      "x": 456,
+      "y": 291,
+      "font": "roboto-mono/RobotoMono-Bold.ttf",
+      "size": 10,
+      "color": [
+        90,
+        220,
+        120
+      ],
+      "anchor": "rt",
+      "temp_levels": {
+        "AMARELO": 55,
+        "VERMELHO": 70
+      },
+      "id": "i47"
+    },
+    {
+      "kind": "data",
+      "source": "STATUS_BORDER",
+      "widget": "border",
+      "x": 0,
+      "y": 0,
+      "id": "i48"
+    }
+  ]
+}

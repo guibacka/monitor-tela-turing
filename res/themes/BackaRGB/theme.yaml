@@ -1,0 +1,345 @@
+# Tema gerado pelo editor Backa a partir de layout.json - edite pelo editor, não à mão
+# (alterações feitas aqui são sobrescritas ao salvar no editor)
+---
+author: Guilherme Backa
+display:
+  DISPLAY_SIZE: 3.5"
+  DISPLAY_ORIENTATION: landscape
+static_images:
+  BACKGROUND:
+    PATH: background.png
+    X: 0
+    Y: 0
+    WIDTH: 480
+    HEIGHT: 320
+STATS:
+  DATE:
+    DAY:
+      TEXT:
+        SHOW: true
+        X: 20
+        Y: 14
+        FONT: roboto/Roboto-Bold.ttf
+        FONT_SIZE: 12
+        FONT_COLOR: 170, 178, 190
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: lt
+        ALIGN: left
+        FORMAT: EEE, dd/MM/yyyy
+    INTERVAL: 1
+    HOUR:
+      TEXT:
+        SHOW: true
+        X: 460
+        Y: 13
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 14
+        FONT_COLOR: 235, 235, 240
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: rt
+        ALIGN: right
+        FORMAT: HH:mm:ss
+  CPU:
+    FREQUENCY:
+      TEXT:
+        SHOW: true
+        X: 224
+        Y: 49
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 220, 220, 228
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: rt
+        ALIGN: right
+        SHOW_UNIT: true
+      INTERVAL: 3
+    PERCENTAGE:
+      TEXT:
+        SHOW: true
+        X: 24
+        Y: 82
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 30
+        FONT_COLOR: 240, 240, 245
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: lt
+        ALIGN: left
+        SHOW_UNIT: true
+      INTERVAL: 2
+      GRAPH:
+        SHOW: true
+        X: 24
+        Y: 124
+        BACKGROUND_IMAGE: background.png
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        WIDTH: 200
+        HEIGHT: 8
+        BAR_COLOR: 255, 77, 77
+        BAR_OUTLINE: false
+      LINE_GRAPH:
+        SHOW: true
+        X: 24
+        Y: 138
+        BACKGROUND_IMAGE: background.png
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        WIDTH: 200
+        HEIGHT: 26
+        LINE_COLOR: 255, 77, 77
+        LINE_WIDTH: 1
+        AUTOSCALE: false
+        AXIS: false
+        HISTORY_SIZE: 50
+  GPU:
+    FREQUENCY:
+      TEXT:
+        SHOW: true
+        X: 456
+        Y: 49
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 220, 220, 228
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: rt
+        ALIGN: right
+        SHOW_UNIT: true
+    INTERVAL: 2
+    PERCENTAGE:
+      TEXT:
+        SHOW: true
+        X: 256
+        Y: 82
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 30
+        FONT_COLOR: 240, 240, 245
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: lt
+        ALIGN: left
+        SHOW_UNIT: true
+      GRAPH:
+        SHOW: true
+        X: 256
+        Y: 124
+        BACKGROUND_IMAGE: background.png
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        WIDTH: 200
+        HEIGHT: 8
+        BAR_COLOR: 118, 214, 74
+        BAR_OUTLINE: false
+  CUSTOM:
+    INTERVAL: 3
+    BackaWeather:
+      TEXT:
+        SHOW: true
+        X: 198
+        Y: 13
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 12
+        FONT_COLOR: 220, 220, 228
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: lt
+        ALIGN: left
+      ICON:
+        X: 172
+        Y: 8
+        SIZE: 22
+    BackaAlert:
+      ICON:
+        X: 364
+        Y: 8
+        SIZE: 22
+    BackaCpuTemp:
+      TEXT:
+        SHOW: true
+        X: 224
+        Y: 82
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 30
+        FONT_COLOR: 90, 220, 120
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: rt
+        ALIGN: right
+      TEMP_LEVELS:
+        AMARELO: 70
+        VERMELHO: 85
+    BackaGpuTemp:
+      TEXT:
+        SHOW: true
+        X: 456
+        Y: 82
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 30
+        FONT_COLOR: 90, 220, 120
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: rt
+        ALIGN: right
+      TEMP_LEVELS:
+        AMARELO: 70
+        VERMELHO: 80
+    BackaVram:
+      TEXT:
+        SHOW: true
+        X: 456
+        Y: 137
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 220, 220, 228
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: rt
+        ALIGN: right
+      GRAPH:
+        SHOW: true
+        X: 256
+        Y: 156
+        BACKGROUND_IMAGE: background.png
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        WIDTH: 200
+        HEIGHT: 6
+        BAR_COLOR: 118, 214, 74
+        BAR_OUTLINE: false
+    BackaRamUsed:
+      TEXT:
+        SHOW: true
+        X: 24
+        Y: 226
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 20
+        FONT_COLOR: 240, 240, 245
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: lt
+        ALIGN: left
+      GRAPH:
+        SHOW: true
+        X: 24
+        Y: 262
+        BACKGROUND_IMAGE: background.png
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        WIDTH: 200
+        HEIGHT: 8
+        BAR_COLOR: 77, 166, 255
+        BAR_OUTLINE: false
+      LINE_GRAPH:
+        SHOW: true
+        X: 24
+        Y: 276
+        BACKGROUND_IMAGE: background.png
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        WIDTH: 200
+        HEIGHT: 26
+        LINE_COLOR: 77, 166, 255
+        LINE_WIDTH: 1
+        AUTOSCALE: false
+        AXIS: false
+        HISTORY_SIZE: 50
+    BackaRamFree:
+      TEXT:
+        SHOW: true
+        X: 224
+        Y: 226
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 20
+        FONT_COLOR: 77, 166, 255
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: rt
+        ALIGN: right
+    BackaDiskCFree:
+      TEXT:
+        SHOW: true
+        X: 456
+        Y: 210
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 220, 220, 228
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: rt
+        ALIGN: right
+      GRAPH:
+        SHOW: true
+        X: 256
+        Y: 230
+        BACKGROUND_IMAGE: background.png
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        WIDTH: 200
+        HEIGHT: 6
+        BAR_COLOR: 181, 123, 255
+        BAR_OUTLINE: false
+    BackaDiskCHealth:
+      TEXT:
+        SHOW: true
+        X: 256
+        Y: 241
+        FONT: roboto-mono/RobotoMono-Regular.ttf
+        FONT_SIZE: 10
+        FONT_COLOR: 150, 158, 170
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: lt
+        ALIGN: left
+    BackaDiskCTemp:
+      TEXT:
+        SHOW: true
+        X: 456
+        Y: 241
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 10
+        FONT_COLOR: 90, 220, 120
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: rt
+        ALIGN: right
+      TEMP_LEVELS:
+        AMARELO: 55
+        VERMELHO: 70
+    BackaDiskJFree:
+      TEXT:
+        SHOW: true
+        X: 456
+        Y: 260
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 13
+        FONT_COLOR: 220, 220, 228
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: rt
+        ALIGN: right
+      GRAPH:
+        SHOW: true
+        X: 256
+        Y: 280
+        BACKGROUND_IMAGE: background.png
+        MIN_VALUE: 0
+        MAX_VALUE: 100
+        WIDTH: 200
+        HEIGHT: 6
+        BAR_COLOR: 181, 123, 255
+        BAR_OUTLINE: false
+    BackaDiskJHealth:
+      TEXT:
+        SHOW: true
+        X: 256
+        Y: 291
+        FONT: roboto-mono/RobotoMono-Regular.ttf
+        FONT_SIZE: 10
+        FONT_COLOR: 150, 158, 170
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: lt
+        ALIGN: left
+    BackaDiskJTemp:
+      TEXT:
+        SHOW: true
+        X: 456
+        Y: 291
+        FONT: roboto-mono/RobotoMono-Bold.ttf
+        FONT_SIZE: 10
+        FONT_COLOR: 90, 220, 120
+        BACKGROUND_IMAGE: background.png
+        ANCHOR: rt
+        ALIGN: right
+      TEMP_LEVELS:
+        AMARELO: 55
+        VERMELHO: 70
+    BackaStatusBorder:
+      WIDTH: 4

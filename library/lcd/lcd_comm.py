@@ -103,9 +103,25 @@ class LcdComm(ABC):
         else:
             return self.display_width
 
-    def openSerial(self):
+    def openSerial(self, forever: bool = False):
         # self.com_port is kept as configured ("AUTO" or a port name): on AUTO the port is
         # detected again at every attempt, since it can change while the screen resets.
+        # [Backa] forever=True: usado quando a tela foi desconectada; espera ela voltar sem desistir
+        if forever:
+            attempt = 0
+            while True:
+                attempt += 1
+                com_port = self.auto_detect_com_port() if self.com_port == 'AUTO' else self.com_port
+                if com_port:
+                    try:
+                        self.lcd_serial = serial.Serial(com_port, 115200, timeout=1, rtscts=True)
+                        logger.info(f"Tela reconectada em {com_port}")
+                        return
+                    except Exception:
+                        pass
+                if attempt == 1 or attempt % 15 == 0:
+                    logger.warning("Tela desconectada: aguardando ela voltar...")
+                time.sleep(2)
         for attempt in range(1, SERIAL_OPEN_ATTEMPTS + 1):
             com_port = self.com_port
             if com_port == 'AUTO':
@@ -180,10 +196,19 @@ class LcdComm(ABC):
             # Error writing data to device: close and reopen serial port, try to write again
             logger.error(
                 "SerialException: Failed to send serial data to device. Closing and reopening COM port before retrying once.")
-            self.closeSerial()
+            try:
+                self.closeSerial()
+            except Exception:
+                pass
             time.sleep(1)
-            self.openSerial()
-            self.serial_write(line)
+            # [Backa] Espera a tela voltar (sem desistir). Ao voltar, ela reiniciou: orientação padrão e tela de
+            # fábrica. O monitor registra on_reconnect para reconfigurar e redesenhar tudo.
+            self.openSerial(forever=True)
+            hook = getattr(self, "on_reconnect", None)
+            if hook:
+                hook()
+            else:
+                self.serial_write(line)
 
     def ReadData(self, readSize: int):
         try:

@@ -29,8 +29,8 @@ VSVersionInfo(
       [
       StringTable(
         '040904b0',
-        [StringStruct('FileDescription', 'System Monitor for USB smart screens like Turing'),
-        StringStruct('ProductName', 'Turing System Monitor'),
+        [StringStruct('FileDescription', 'Monitor da Tela Turing 3,5" (versão Backa)'),
+        StringStruct('ProductName', 'Monitor da Tela Turing'),
         StringStruct('ProductVersion', '1.2.3'),
         StringStruct('FileVersion', '1.2.3')])
       ]), 

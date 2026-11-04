@@ -32,6 +32,47 @@ check_python_version()
 import os
 import sys
 
+# [Backa] Se esta instância veio de uma recarga automática, espera a anterior terminar ANTES de importar o display:
+# a porta da tela é aberta já na importação de library.display
+if os.environ.get("BACKA_WAIT_PID"):
+    import time as _time
+    try:
+        import psutil as _psutil
+        _old_pid = int(os.environ.pop("BACKA_WAIT_PID"))
+        for _ in range(100):
+            if not _psutil.pid_exists(_old_pid):
+                break
+            _time.sleep(0.1)
+    except Exception:
+        pass
+    _time.sleep(1)  # margem para o driver USB da tela liberar a porta
+
+# [Backa] Só um monitor por vez: se outro já está rodando (ou reiniciando), este sai antes de disputar a porta da tela
+if __name__ == "__main__" and "--theme-screenshots" not in sys.argv and "-t" not in sys.argv:
+    import json as _json
+    import time as _time
+    from pathlib import Path as _Path
+    _dir = _Path(__file__).resolve().parent
+    try:
+        import psutil as _psutil
+        _other = int((_dir / ".monitor.pid").read_text())
+        _alive = _other != os.getpid() and _psutil.pid_exists(_other) and _psutil.Process(_other).name().lower() in ("python.exe", "pythonw.exe", "python", "main.exe")
+    except Exception:
+        _alive = False
+    try:
+        _st = _json.loads((_dir / ".monitor.state").read_text())
+        _reloading = _st.get("state") == "reloading" and _time.time() - _st.get("time", 0) < 40
+    except Exception:
+        _reloading = False
+    _restarted = os.environ.pop("BACKA_RESTARTED", None)  # a nova instância de uma recarga pode seguir
+    if _alive or (_reloading and not _restarted):
+        try:
+            from library.log import logger as _logger
+            _logger.warning("Já existe um monitor rodando (ou reiniciando): esta nova instância vai fechar")
+        except Exception:
+            pass
+        os._exit(0)
+
 try:
     import argparse
     import atexit
@@ -90,7 +131,22 @@ if __name__ == "__main__":
 
         logger.debug("(Waited %.1fs)" % wait_time)
 
+    def backa_shutdown_sensors():
+        # [Backa] Encerra o PresentMon (FPS) do jeito certo, para não deixar a sessão de captura presa no Windows
+        try:
+            import library.sensors.sensors_custom as sensors_custom
+            sensors_custom.backa_shutdown()
+        except Exception:
+            pass
+
     def clean_stop(tray_icon=None):
+        # [Backa] Avisa o editor que o monitor foi encerrado e fecha o PresentMon
+        try:
+            (MAIN_DIRECTORY / ".monitor.state").write_text('{"state": "stopped", "time": %f}' % time.time())
+        except Exception:
+            pass
+        backa_shutdown_sensors()
+
         # Turn screen and LEDs off before stopping
         display.turn_off()
 
@@ -130,7 +186,167 @@ if __name__ == "__main__":
             else:
                 subprocess.Popen([str(configure_file)])
 
-        clean_stop(tray_icon)
+        # [Backa] O monitor continua rodando enquanto a configuração está aberta:
+        # ao salvar, o vigia de arquivos (watch_config_files) aplica as mudanças na tela
+
+    def backa_launch(script: str, exe: str, env=None):
+        # [Backa] Abre um componente do projeto: em desenvolvimento roda o .py com o Python do venv;
+        # na versão instalada (PyInstaller) roda o .exe correspondente, que fica na pasta do programa
+        if getattr(sys, "frozen", False):
+            command = [str(MAIN_DIRECTORY / exe)]
+        else:
+            command = [sys.executable, str(MAIN_DIRECTORY / script)]
+        subprocess.Popen(command, cwd=str(MAIN_DIRECTORY), env=env)
+
+    # [Backa] Arquivo que indica que o monitor está rodando (o configurador usa para não abrir um segundo monitor)
+    PID_FILE = MAIN_DIRECTORY / ".monitor.pid"
+
+    STATE_FILE = MAIN_DIRECTORY / ".monitor.state"
+
+    def write_state(state: str):
+        # Estado do monitor para o editor: running / reloading / stopped
+        try:
+            STATE_FILE.write_text('{"state": "%s", "time": %f}' % (state, time.time()))
+        except Exception:
+            pass
+
+    def schedule_signature(theme_data):
+        # Intervalos de cada tarefa agendada: definidos ao iniciar o programa, não mudam sem reiniciar
+        stats_data = theme_data["STATS"]
+        cpu = stats_data["CPU"]
+        return (tuple(cpu[k].get("INTERVAL", 0) for k in ("PERCENTAGE", "FREQUENCY", "LOAD", "TEMPERATURE", "FAN_SPEED")) +
+                tuple(stats_data.get(k, {}).get("INTERVAL", 0)
+                      for k in ("GPU", "MEMORY", "DISK", "NET", "DATE", "UPTIME", "CUSTOM", "WEATHER", "PING")))
+
+    def hot_reload_theme(theme_name: str) -> bool:
+        # Troca o tema sem reiniciar o programa (~3 s, quase só o tempo de desenhar o fundo).
+        # Só é possível se as tarefas agendadas continuam as mesmas; senão, retorna False e o monitor reinicia.
+        import copy
+        from library import config
+        import library.sensors.sensors_custom as sensors_custom
+        try:
+            candidate = config.load_yaml(MAIN_DIRECTORY / "res" / "themes" / theme_name / "theme.yaml")
+            candidate = copy.deepcopy(candidate)
+            config.copy_default(copy.deepcopy(config.THEME_DEFAULT), candidate)
+        except Exception as e:
+            logger.warning("Tema novo inválido (%s): reiniciando" % e)
+            return False
+        if schedule_signature(candidate) != schedule_signature(config.THEME_DATA) or \
+                candidate["display"].get("DISPLAY_ORIENTATION") != config.THEME_DATA["display"].get("DISPLAY_ORIENTATION"):
+            return False
+        write_state("reloading")
+        logger.info("Aplicando o tema %s sem reiniciar" % theme_name)
+        config.CONFIG_DATA["config"]["THEME"] = theme_name
+        config.load_theme()
+        display.lcd.image_cache.clear()
+        sensors_custom.backa_reset_caches()
+        display.display_static_images()
+        display.display_static_text()
+        wait_for_empty_queue(10)
+        write_state("running")
+        return True
+
+    def restart_monitor(tray_icon=None):
+        # Libera a porta da tela e abre uma nova instância com a configuração/tema atualizados
+        logger.info("Configuração ou tema alterados: reiniciando o monitor para aplicar na tela")
+        write_state("reloading")
+        scheduler.STOPPING = True
+        wait_for_empty_queue(5)
+        backa_shutdown_sensors()
+        if tray_icon:
+            tray_icon.visible = False
+        # A nova instância espera este processo terminar antes de abrir a porta da tela (BACKA_WAIT_PID).
+        # Não fechamos a porta aqui: algum sensor ainda pode tentar escrever e reabri-la; ao sair, o Windows a libera.
+        env = dict(os.environ, BACKA_WAIT_PID=str(os.getpid()), BACKA_RESTARTED="1")
+        backa_launch("main.py", "main.exe", env=env)
+        os._exit(0)
+
+    def watch_config_files_safe(tray_icon=None):
+        # Mantém o vigia de arquivos vivo: se der erro, registra no log e recomeça
+        import traceback
+        while True:
+            try:
+                watch_config_files(tray_icon)
+            except Exception:
+                logger.error("Vigia de arquivos: " + traceback.format_exc().replace("\n", " | "))
+                time.sleep(2)
+
+    def watch_config_files(tray_icon=None):
+        # Vigia config.yaml, os arquivos do tema ativo e o código dos sensores.
+        #   brilho -> aplicado na hora | tema (arquivos ou troca de preset) -> sem reiniciar, se possível
+        #   resto do config.yaml ou código dos sensores -> reinicia o monitor
+        import copy
+        import yaml
+        from library import config
+
+        config_file = MAIN_DIRECTORY / "config.yaml"
+        sensors_file = MAIN_DIRECTORY / "library" / "sensors" / "sensors_custom.py"
+
+        def watched():
+            theme_dir = MAIN_DIRECTORY / "res" / "themes" / config.CONFIG_DATA["config"]["THEME"]
+            return [config_file, sensors_file, theme_dir / "theme.yaml", theme_dir / "background.png"]
+
+        def snapshot(files):
+            return {f: (f.stat().st_mtime if f.exists() else 0) for f in files}
+
+        last = snapshot(watched())
+        # Força conferir o config.yaml logo na primeira volta: ele pode ter mudado enquanto o monitor iniciava
+        last[config_file] = 0
+        while True:
+            time.sleep(0.5)
+            files = watched()
+            current = snapshot(files)
+            if current == last:
+                continue
+            time.sleep(0.5)  # espera os arquivos terminarem de ser gravados
+            current = snapshot(files)
+            changed = [f for f in files if current[f] != last.get(f)]
+            last = current
+
+            if sensors_file in changed:
+                restart_monitor(tray_icon)
+            new_theme = config.CONFIG_DATA["config"]["THEME"]
+            if config_file in changed:
+                try:
+                    with open(config_file, encoding="utf-8") as f:
+                        new_cfg = yaml.safe_load(f)
+                    new_rest, old_rest = copy.deepcopy(new_cfg), copy.deepcopy(config.CONFIG_DATA)
+                    new_brightness = new_rest["display"].pop("BRIGHTNESS")
+                    old_rest["display"].pop("BRIGHTNESS")
+                    new_theme = new_rest["config"].pop("THEME")
+                    old_rest["config"].pop("THEME")
+                    new_reverse = new_rest["display"].pop("DISPLAY_REVERSE", False)
+                    old_rest["display"].pop("DISPLAY_REVERSE", None)
+                except Exception as e:
+                    logger.warning("Não foi possível ler o config.yaml alterado: %s" % e)
+                    continue
+                if new_rest != old_rest:
+                    # Ex.: porta COM, modelo da tela, leitura de sensores: só reiniciando o monitor
+                    restart_monitor(tray_icon)
+                if new_brightness != config.CONFIG_DATA["display"]["BRIGHTNESS"]:
+                    config.CONFIG_DATA["display"]["BRIGHTNESS"] = new_brightness
+                    display.lcd.SetBrightness(new_brightness)
+                    logger.info("Brilho alterado para %d%%" % new_brightness)
+                reverse_changed = bool(new_reverse) != bool(config.CONFIG_DATA["display"].get("DISPLAY_REVERSE", False))
+                if reverse_changed:
+                    # Inverter a tela: muda a orientação e redesenha tudo, sem reiniciar
+                    import library.display as display_module
+                    config.CONFIG_DATA["display"]["DISPLAY_REVERSE"] = bool(new_reverse)
+                    display.lcd.SetOrientation(display_module._get_theme_orientation())
+                    logger.info("Tela %s" % ("invertida" if new_reverse else "na orientação normal"))
+            else:
+                reverse_changed = False
+
+            theme_files_changed = any(f not in (config_file, sensors_file) for f in changed)
+            if new_theme != config.CONFIG_DATA["config"]["THEME"] or theme_files_changed or reverse_changed:
+                if not hot_reload_theme(new_theme):
+                    restart_monitor(tray_icon)
+                last = snapshot(watched())
+
+    def on_editor_tray(tray_icon, item):
+        # [Backa] Abre o editor visual de presets no navegador (se já estiver aberto, só abre a página)
+        logger.info("Editor de tela aberto pela bandeja")
+        backa_launch("backa_editor/server.py", "editor.exe")
 
     def on_exit_tray(tray_icon, item):
         logger.info("Exit from tray icon")
@@ -178,11 +394,15 @@ if __name__ == "__main__":
             icon=Image.open(MAIN_DIRECTORY / "res/icons/monitor-icon-17865/64.png"),
             menu=pystray.Menu(
                 pystray.MenuItem(
-                    text='Configure',
+                    text='Editor de tela',
+                    action=on_editor_tray,
+                    default=True),
+                pystray.MenuItem(
+                    text='Configurar',
                     action=on_configure_tray),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(
-                    text='Exit',
+                    text='Sair',
                     action=on_exit_tray)
             )
         )
@@ -219,6 +439,60 @@ if __name__ == "__main__":
     logger.info("Initialize display")
     display.initialize_display()
 
+    # [Backa] Espelho da tela: guarda uma cópia de tudo que é enviado ao display, para a prévia ao vivo do configurador
+    import threading
+    from library import config as backa_config
+
+    mirror_lock = threading.Lock()
+    screen_mirror = Image.new("RGB", (display.lcd.get_width(), display.lcd.get_height()), (0, 0, 0))
+    original_display_pil_image = display.lcd.DisplayPILImage
+
+    def mirrored_display_pil_image(image, x=0, y=0, image_width=0, image_height=0):
+        try:
+            w, h = image_width or image.size[0], image_height or image.size[1]
+            with mirror_lock:
+                screen_mirror.paste(image.convert("RGB").crop((0, 0, w, h)), (x, y))
+        except Exception:
+            pass
+        return original_display_pil_image(image, x, y, image_width, image_height)
+
+    display.lcd.DisplayPILImage = mirrored_display_pil_image
+
+    def on_screen_reconnected():
+        # [Backa] A tela foi desconectada e voltou: ela reiniciou (orientação padrão, tela de fábrica).
+        # Roda na thread da fila de envio, então nada mais escreve na tela ao mesmo tempo.
+        import queue as queue_module
+        import library.sensors.sensors_custom as sensors_custom
+        logger.info("Tela reconectada: reconfigurando orientação, brilho e fundo")
+        write_state("reloading")
+        try:
+            while True:
+                display.lcd.update_queue.get_nowait()  # descarta o que acumulou durante a desconexão
+        except queue_module.Empty:
+            pass
+        display.initialize_display()
+        sensors_custom.backa_reset_caches()
+        display.display_static_images()
+        display.display_static_text()
+        write_state("running")
+
+    display.lcd.on_reconnect = on_screen_reconnected
+
+    def save_live_preview():
+        # Grava a prévia a cada 1 s (arquivo temporário + troca, para o configurador nunca ler um arquivo pela metade)
+        while True:
+            time.sleep(1)
+            # O nome acompanha o preset ativo (ele pode mudar sem reiniciar)
+            target = MAIN_DIRECTORY / (".live-preview-%s.png" % backa_config.CONFIG_DATA["config"]["THEME"])
+            temp = target.with_suffix(".tmp.png")
+            try:
+                with mirror_lock:
+                    snapshot = screen_mirror.copy()
+                snapshot.save(temp)
+                os.replace(temp, target)
+            except Exception as e:
+                logger.debug("Prévia ao vivo: %s" % e)
+
     # Start serial queue handler
     if not args.theme_screenshots:
         scheduler.QueueHandler()
@@ -253,6 +527,12 @@ if __name__ == "__main__":
         scheduler.CustomStats(); time.sleep(DELAY_BETWEEN_THREADS)
         scheduler.WeatherStats(); time.sleep(DELAY_BETWEEN_THREADS)
         scheduler.PingStats(); time.sleep(DELAY_BETWEEN_THREADS)
+
+        # [Backa] Registra o monitor como ativo, liga a recarga automática ao salvar configuração/tema e a prévia ao vivo
+        PID_FILE.write_text(str(os.getpid()))
+        write_state("running")
+        threading.Thread(target=watch_config_files_safe, args=(tray_icon,), daemon=True).start()
+        threading.Thread(target=save_live_preview, daemon=True).start()
     else:
         logger.info("Theme screenshots mode enabled - program will run %d iterations then close." % args.theme_screenshots)
         # Run a predefined number of time to generate theme screenshot then close

@@ -1,11 +1,21 @@
-name: Generate Windows Packages
+name: Gerar instalador do Windows
+
+# Gera o instalador (Inno Setup) e a versão portátil (zip).
+# - Ao publicar uma Release (tag tipo v1.0.0): anexa os arquivos à Release.
+# - Manualmente (aba Actions > "Gerar instalador do Windows" > Run workflow): os arquivos ficam nos artefatos da execução.
 
 on:
   release:
     types: [ published ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão (ex.: 1.0.0)'
+        required: true
+        default: '1.0.0'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -13,65 +23,69 @@ permissions:
 
 jobs:
   generate-windows-installer:
-    name: Generate Windows Packages
+    name: Gerar instalador do Windows
     runs-on: windows-latest
 
     steps:
-    - name: Git Checkout ${{github.event.release.tag_name}}
+    - name: Baixar o código
       uses: actions/checkout@v7
 
-    - name: Set up Python
+    - name: Definir a versão
+      id: version
+      shell: pwsh
+      run: |
+        $v = if ('${{ github.event_name }}' -eq 'release') { '${{ github.event.release.tag_name }}' } else { '${{ inputs.version }}' }
+        $v = $v.TrimStart('v', 'V')
+        if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Versão inválida: '$v' (use o formato 1.2.3)" }
+        "version=$v" >> $env:GITHUB_OUTPUT
+
+    - name: Instalar o Python
       uses: actions/setup-python@v7
       with:
         python-version: '3.14'
 
-    - name: Install dependencies
+    - name: Instalar as dependências
       run: |
         python -m pip install --upgrade pip
         python -m pip install -r requirements.txt
 
-    - name: Set version number for PyInstaller
+    - name: Gravar a versão nos executáveis
       run: |
-        python.exe tools\windows-installer\generate-version-info.py ${{github.event.release.tag_name}}
+        python.exe tools\windows-installer\generate-version-info.py ${{ steps.version.outputs.version }}
 
-    - name: Run PyInstaller to create binaries
+    - name: Gerar os executáveis (PyInstaller)
       run: |
         pyinstaller.exe --noconfirm turing-system-monitor.spec
-        "${{github.event.release.tag_name}}" | Out-File ".\dist\turing-system-monitor\version.txt"
+        "${{ steps.version.outputs.version }}" | Out-File ".\dist\turing-system-monitor\version.txt"
 
-    - name: Create InnoSetup installer from generated binaries
+    - name: Gerar o instalador (Inno Setup)
       uses: Minionguyjpro/Inno-Setup-Action@v1.2.9
       with:
         path: tools/windows-installer/turing-system-monitor.iss
         options: /O+
 
-    - name: Create portable zip archive from generated binaries
+    - name: Gerar a versão portátil (zip)
       run: |
-        Remove-Item -r ".\dist\turing-system-monitor\res\themes\--Theme examples\"
-        7z a -tzip turing-system-monitor-${{github.event.release.tag_name}}-portable-windows.zip ".\dist\turing-system-monitor"
+        Remove-Item -r ".\dist\turing-system-monitor\res\themes\--Theme examples\" -ErrorAction SilentlyContinue
+        7z a -tzip monitor-tela-turing-${{ steps.version.outputs.version }}-portatil-windows.zip ".\dist\turing-system-monitor"
 
-    - name: '📦 Archive Windows installer'
+    - name: '📦 Guardar o instalador'
       uses: actions/upload-artifact@v7
       with:
-        name: turing-system-monitor-${{github.event.release.tag_name}}-windows
-        path: tools\windows-installer\Output\turing-system-monitor-${{github.event.release.tag_name}}-windows.exe
+        name: monitor-tela-turing-${{ steps.version.outputs.version }}-windows
+        path: tools\windows-installer\Output\monitor-tela-turing-${{ steps.version.outputs.version }}-windows.exe
         if-no-files-found: error
 
-    - name: '📦 Archive Windows portable archive'
+    - name: '📦 Guardar a versão portátil'
       uses: actions/upload-artifact@v7
       with:
-        name: turing-system-monitor-${{github.event.release.tag_name}}-portable-windows
-        path: turing-system-monitor-${{github.event.release.tag_name}}-portable-windows.zip
+        name: monitor-tela-turing-${{ steps.version.outputs.version }}-portatil-windows
+        path: monitor-tela-turing-${{ steps.version.outputs.version }}-portatil-windows.zip
         if-no-files-found: error
 
-    - name: '📩 Publish Windows installer to Release'
+    - name: '📩 Anexar à Release'
+      if: github.event_name == 'release'
       run: |
-        gh release upload ${{github.event.release.tag_name}} tools\windows-installer\Output\turing-system-monitor-${{github.event.release.tag_name}}-windows.exe
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: '📩 Publish Windows portable zip to Release'
-      run: |
-        gh release upload ${{github.event.release.tag_name}} turing-system-monitor-${{github.event.release.tag_name}}-portable-windows.zip
+        gh release upload ${{ github.event.release.tag_name }} tools\windows-installer\Output\monitor-tela-turing-${{ steps.version.outputs.version }}-windows.exe monitor-tela-turing-${{ steps.version.outputs.version }}-portatil-windows.zip
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

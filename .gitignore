@@ -142,3 +142,8 @@ tmp
 
 version.txt
 external/LibreHardwareMonitor/LibreHardwareMonitorLib.sys
+
+# [Backa] arquivos gerados pelo monitor
+.monitor.pid
+.live-preview-*.png
+.monitor.state
