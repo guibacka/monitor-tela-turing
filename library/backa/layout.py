@@ -78,6 +78,18 @@ SOURCES = {
                "widgets": ["text", "line_graph"], "sample": 10, "sample_text": "  1.1M"},
     "PING": {"group": "Rede", "label": "Ping (ms)", "path": ["PING"], "interval_at": ["PING"], "interval": 3,
              "widgets": ["text", "bar", "line_graph"], "sample": 12, "sample_text": "    12ms", "max": 150},
+    # Conexão: no editor, escolhe-se qual adaptador é o cabo e qual é o Wi-Fi
+    "NET_CABLE": {"group": "Rede", "label": "Cabo de rede conectado", "custom": "BackaNetCable", "net_kind": "cabo",
+                  "widgets": ["text", "icon"], "sample_text": "Cabo: 1 Gbps          ",
+                  "states": [["OK", "Conectado"], ["DESCONECTADO", "Desconectado"]],
+                  "default_icons": {"OK": "sym:plug-connected:outline:90,220,120",
+                                    "DESCONECTADO": "sym:plug-connected-x:outline:255,77,77"},
+                  "text_states": [["OK", "Conectado", None], ["DESCONECTADO", "Desconectado", [255, 77, 77]]]},
+    "NET_WIFI": {"group": "Rede", "label": "Wi-Fi conectado", "custom": "BackaNetWifi", "net_kind": "wifi",
+                 "widgets": ["text", "icon"], "sample_text": "Wi-Fi: MinhaRede 82%  ",
+                 "states": [["OK", "Conectado"], ["DESCONECTADO", "Desconectado"]],
+                 "default_icons": {"OK": "sym:wifi:outline:90,220,120", "DESCONECTADO": "sym:wifi-off:outline:255,77,77"},
+                 "text_states": [["OK", "Conectado", None], ["DESCONECTADO", "Desconectado", [255, 77, 77]]]},
     "DATE": {"group": "Data e hora", "label": "Data", "path": ["DATE", "DAY"], "interval_at": ["DATE"], "interval": 1,
              "widgets": ["text"], "format": "EEE, dd/MM/yyyy"},
     "TIME": {"group": "Data e hora", "label": "Hora", "path": ["DATE", "HOUR"], "interval_at": ["DATE"], "interval": 1,
@@ -86,9 +98,76 @@ SOURCES = {
                "interval": 5, "widgets": ["text"], "sample_text": "0d 04:12:33"},
     "WEATHER": {"group": "Extras", "label": "Clima (Open-Meteo)", "custom": "BackaWeather", "widgets": ["weather"],
                 "sample_text": " 20°C Céu limpo   ", "sample_icon": "clear_night"},
-    "ALERT": {"group": "Extras", "label": "Ícone de alerta", "custom": "BackaAlert", "widgets": ["icon"], "sample_icon": "alert_warn"},
+    "ALERT": {"group": "Extras", "label": "Ícone de alerta", "custom": "BackaAlert", "widgets": ["icon"],
+              "states": [["AMARELO", "Atenção"], ["VERMELHO", "Crítico"]],
+              "default_icons": {"AMARELO": "alert_warn", "VERMELHO": "alert_crit"}},
     "STATUS_BORDER": {"group": "Extras", "label": "Borda de status", "custom": "BackaStatusBorder", "widgets": ["border"]},
+    # Throttle: ícone só aparece quando há redução de clock; o texto muda de cor conforme o estado
+    "CPU_THROTTLE": {"group": "CPU", "label": "Throttle (limite de temperatura)", "custom": "BackaCpuThrottle",
+                     "widgets": ["text", "icon"], "sample_text": "Sem limite  ",
+                     "states": [["TERMICO", "Térmico"]], "default_icons": {"TERMICO": "sym:flame:filled:255,77,77"},
+                     "text_states": [["OK", "Sem limite", None], ["TERMICO", "Térmico", [255, 77, 77]]]},
+    "GPU_THROTTLE": {"group": "GPU", "label": "Throttle (temperatura / energia)", "custom": "BackaGpuThrottle",
+                     "widgets": ["text", "icon"], "sample_text": "Sem limite  ",
+                     "states": [["TERMICO", "Térmico"], ["ENERGIA", "Limite de energia"]],
+                     "default_icons": {"TERMICO": "sym:flame:filled:255,77,77", "ENERGIA": "sym:bolt:filled:255,200,0"},
+                     "text_states": [["OK", "Sem limite", None], ["TERMICO", "Térmico", [255, 77, 77]],
+                                     ["ENERGIA", "Limite de energia", [255, 200, 0]]]},
+    "POWER_MODE": {"group": "Sistema", "label": "Modo de energia", "custom": "BackaPowerMode", "widgets": ["text"],
+                   "sample_text": "Alto desempenho     "},
+    "UPDATE_WINDOWS": {"group": "Sistema", "label": "Atualizações do Windows", "custom": "BackaWinUpdate",
+                       "widgets": ["text", "icon"], "sample_text": "Windows: 2 atualiz.   ",
+                       "states": [["ATIVO", "Atualização disponível"]],
+                       "default_icons": {"ATIVO": "sym:brand-windows:filled:77,166,255"},
+                       "text_states": [["OK", "Em dia", None], ["ATIVO", "Atualização disponível", [255, 200, 0]]]},
+    "UPDATE_NVIDIA": {"group": "Sistema", "label": "Driver NVIDIA novo", "custom": "BackaNvidiaUpdate",
+                      "widgets": ["text", "icon"], "sample_text": "Driver 621.14 novo    ",
+                      "states": [["ATIVO", "Driver novo disponível"]],
+                      "default_icons": {"ATIVO": "sym:device-desktop-down:outline:118,185,0"},
+                      "text_states": [["OK", "Em dia", None], ["ATIVO", "Driver novo disponível", [255, 200, 0]]]},
 }
+
+SOURCES.update({
+    "RAM_TEMP": {"group": "RAM", "label": "Temperatura (pente mais quente)", "custom": "BackaRamTemp", "widgets": ["text"],
+                 "sample_text": " 42°C", "temp_levels": {"AMARELO": 60, "VERMELHO": 75}},
+    "TOP_CPU": {"group": "Sistema", "label": "Processo que mais usa CPU", "custom": "BackaTopCpu", "widgets": ["text"],
+                "sample_text": "chrome          12%"},
+    "TOP_RAM": {"group": "Sistema", "label": "Processo que mais usa RAM", "custom": "BackaTopRam", "widgets": ["text"],
+                "sample_text": "chrome          3.2 GB"},
+})
+
+# Leitura e escrita de cada disco (MB/s)
+for _letter in ("C", "J"):
+    for _key, _label, _cls in (("READ", "Leitura (MB/s)", "Read"), ("WRITE", "Escrita (MB/s)", "Write")):
+        SOURCES[f"DISK_{_letter}_{_key}"] = {"group": f"Disco {_letter}:", "label": _label, "custom": f"BackaDisk{_letter}{_cls}",
+                                             "widgets": ["text", "bar", "line_graph"], "sample": 20,
+                                             "sample_text": " 12.4 MB/s", "max": 500}
+
+# Sensores escolhidos no editor (cada item mostra um sensor físico, da lista que o monitor grava):
+#   fans (FAN_1 ... FAN_8) e temperaturas extras da placa-mãe/RAM (TEMP_1 ... TEMP_4)
+FAN_SLOTS, TEMP_SLOTS = 8, 4
+for _n in range(1, FAN_SLOTS + 1):
+    SOURCES[f"FAN_{_n}"] = {"group": "Fans", "label": f"Fan {_n} (RPM)", "custom": f"BackaFan{_n}", "hw_kind": "fan",
+                            "hw_slot": _n, "widgets": ["text", "bar", "line_graph"], "sample": 55,
+                            "sample_text": " 1250 RPM", "max": 2000}
+for _n in range(1, TEMP_SLOTS + 1):
+    SOURCES[f"TEMP_{_n}"] = {"group": "Temperaturas extras", "label": f"Temperatura {_n}", "custom": f"BackaTemp{_n}",
+                             "hw_kind": "temp", "hw_slot": _n, "widgets": ["text"], "sample_text": " 37°C",
+                             "temp_levels": {"AMARELO": 60, "VERMELHO": 80}}
+
+
+def icon_spec(entry) -> str:
+    # Ícone escolhido no editor ({icon, style, color}) -> texto usado pelo monitor: "sym:<nome>:<estilo>:<r>,<g>,<b>"
+    if isinstance(entry, str):
+        return entry
+    r, g, b = _rgb(entry.get("color"), (240, 240, 245))
+    return f"sym:{entry.get('icon', '')}:{entry.get('style', 'outline')}:{r},{g},{b}"
+
+
+def item_state_icon(item: dict, state: str) -> str:
+    src = SOURCES.get(item.get("source"), {})
+    chosen = (item.get("state_icons") or {}).get(state)
+    return icon_spec(chosen) if chosen else (src.get("default_icons") or {}).get(state, src.get("sample_icon", ""))
 
 STATIC_KINDS = {"panel": "Painel", "label": "Texto", "image": "Imagem", "symbol": "Ícone", "line": "Linha"}
 
@@ -319,12 +398,26 @@ def build_theme(layout: dict) -> dict:
                 block["ICON"] = {"X": int(item["x"]), "Y": int(item["y"]), "SIZE": int(item.get("icon_size", 22))}
             elif widget == "icon":
                 block["ICON"] = {"X": int(item["x"]), "Y": int(item["y"]), "SIZE": int(item.get("size", 22))}
+                if item.get("state_icons"):
+                    block["ICON"]["STATES"] = {state: icon_spec(entry) for state, entry in item["state_icons"].items()
+                                               if entry and state in dict(src.get("states") or [])}
             elif widget == "border":
                 block["WIDTH"] = int(item.get("thickness", 4))
                 if item.get("colors"):
                     block["COLORS"] = {k: list(_rgb(v)) for k, v in item["colors"].items()}
             if src.get("temp_levels"):
                 block["TEMP_LEVELS"] = dict(item.get("temp_levels") or src["temp_levels"])
+            if src.get("text_states") and widget == "text":
+                # Cor do texto em cada estado; "OK" usa a cor normal do item
+                chosen = item.get("state_colors") or {}
+                block["STATE_COLORS"] = {state: list(_rgb(chosen.get(state) or default or item.get("color", (240, 240, 245))))
+                                         for state, _, default in src["text_states"]}
+            if src.get("hw_slot") and item.get("sensor"):
+                block["SENSOR"] = str(item["sensor"])
+            if src.get("net_kind") and item.get("adapter"):
+                block["ADAPTER"] = str(item["adapter"])
+            if src.get("net_kind") and widget == "icon" and item.get("hide_ok"):
+                block["ICON"]["HIDE_OK"] = True
             if src.get("fast_refresh") and widget == "text":
                 # Ritmo próprio do texto (ex.: FPS a cada 1 s), independente do intervalo dos sensores personalizados
                 block["REFRESH"] = float(item.get("interval") or src["fast_refresh"])
@@ -379,10 +472,17 @@ def _sample_color(item: dict):
 
 
 def _icon(name: str, size: int = 22) -> Image.Image:
+    # name: PNG de res/backa/icons ou "sym:<nome>:<estilo>:<r>,<g>,<b>" (biblioteca Tabler)
+    size = int(size)
+    if name.startswith("sym:"):
+        _, icon, style, color = (name.split(":") + ["", "", ""])[:4]
+        pic = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        _draw_symbol(pic, {"icon": icon, "style": style, "color": color or "240,240,245", "x": 0, "y": 0, "size": size})
+        return pic
     try:
-        return Image.open(ICONS_DIR / f"{name}.png").convert("RGBA").resize((int(size), int(size)), Image.LANCZOS)
+        return Image.open(ICONS_DIR / f"{name}.png").convert("RGBA").resize((size, size), Image.LANCZOS)
     except Exception:
-        return Image.new("RGBA", (int(size), int(size)), (0, 0, 0, 0))
+        return Image.new("RGBA", (size, size), (0, 0, 0, 0))
 
 
 def render_preview(layout: dict, folder: Path = None):
@@ -452,8 +552,10 @@ def render_preview(layout: dict, folder: Path = None):
             bb = d.textbbox((tx, ty), src["sample_text"], font=font, anchor="lt")
             boxes[iid] = [x, y, bb[2] - x, max(icon, bb[3] - y)]
         elif widget == "icon":
+            # Mostra o ícone do primeiro estado (ex.: "Atenção" no alerta, "Térmico" no throttle)
             size = int(item.get("size", 22))
-            img.alpha_composite(_icon(src["sample_icon"], size), (int(x), int(y)))
+            states = src.get("states") or [[None]]
+            img.alpha_composite(_icon(item_state_icon(item, states[0][0]), size), (int(x), int(y)))
             boxes[iid] = [x, y, size, size]
         elif widget == "border":
             w, h = img.size

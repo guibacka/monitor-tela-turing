@@ -79,15 +79,31 @@ def start_session(name=SESSION):
     return err
 
 
-def existing_sessions():
-    # Sessões "BackaFPS*" rodando no Windows (as criadas antes de um jogo com anti-cheat continuam valendo)
+KNOWN_FILE = None  # definido pelo Reader: arquivo com as sessões vistas por último (o logman pode ser bloqueado)
+
+
+def existing_sessions(logger=None):
+    # Sessões "BackaFPS*" rodando no Windows (as criadas antes de um jogo com anti-cheat continuam valendo).
+    # Lista pelo logman; se ele falhar (alguns anti-cheats bloqueiam), usa as que funcionaram da última vez.
+    names = []
     try:
         out = subprocess.run(["logman", "query", "-ets"], capture_output=True, text=True, errors="replace",
-                             timeout=10, creationflags=NO_WINDOW).stdout
-    except Exception:
-        return []
-    names = [line.split()[0] for line in out.splitlines() if line.strip().lower().startswith("backafps")]
-    return sorted(names, key=lambda n: (n.lower() != SESSION.lower(), n))
+                             timeout=10, creationflags=NO_WINDOW)
+        names = [line.split()[0] for line in out.stdout.splitlines() if line.strip().lower().startswith("backafps")]
+        if not names and logger:
+            logger.debug("FPS: logman não listou sessões (código %s)" % out.returncode)
+    except Exception as e:
+        if logger:
+            logger.debug("FPS: logman falhou (%s)" % e)
+    if KNOWN_FILE is not None:
+        try:
+            if names:
+                KNOWN_FILE.write_text("\n".join(names), encoding="utf-8")
+            else:
+                names = [n for n in KNOWN_FILE.read_text(encoding="utf-8").split() if n]
+        except Exception:
+            pass
+    return sorted(set(names), key=lambda n: (n.lower() != SESSION.lower(), n))
 
 
 def _kill_with_parent(proc, logger=None):
@@ -114,7 +130,10 @@ class Reader:
     RETRY = 30
 
     def __init__(self, script, logger=None):
+        global KNOWN_FILE
         self.script, self.logger = str(script), logger
+        from pathlib import Path
+        KNOWN_FILE = Path(script).resolve().parents[2] / ".monitor.etw-sessions"
         self.lock = threading.Lock()
         self.proc = self.job = None
         self.values, self.at, self.session = {}, 0.0, None
@@ -137,8 +156,9 @@ class Reader:
     def _launch(self):
         self.launches += 1
         err = start_session()
-        names = ([SESSION] if err in (0, ERROR_ALREADY_EXISTS) else []) + \
-                [n for n in existing_sessions() if n.lower() != SESSION.lower()]
+        # A BackaFPS entra sempre: mesmo que o Windows negue criá-la agora (anti-cheat), ela pode já existir
+        # desde antes do jogo. Se não existir, o leitor só informa que aquela sessão não abriu.
+        names = [SESSION] + [n for n in existing_sessions(self.logger) if n.lower() != SESSION.lower()]
         log = self.logger.info if self.logger and self.launches == 1 else (self.logger.debug if self.logger else None)
         if not names:
             if log:

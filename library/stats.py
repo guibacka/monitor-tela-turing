@@ -821,7 +821,7 @@ class Custom:
                 except Exception as e:
                     logger.error(
                         "Error loading custom sensor class " + str(custom_stat) + " from sensors_custom.py : " + str(e))
-                    return
+                    continue  # [Backa] um sensor com problema não impede os outros de aparecerem
 
                 if string_value is None:
                     string_value = str(numeric_value)

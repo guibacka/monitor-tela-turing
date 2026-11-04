@@ -450,6 +450,17 @@ if __name__ == "__main__":
                 logger.error("Automação da tela: " + traceback.format_exc().replace("\n", " | "))
                 time.sleep(5)
 
+    def backa_inventory_loop():
+        # [Backa] Grava a lista de fans encontradas (.monitor.hw.json) para o editor oferecer na hora de escolher
+        import library.sensors.sensors_custom as sensors_custom
+        time.sleep(5)
+        while True:
+            try:
+                sensors_custom.backa_write_inventory()
+            except Exception as e:
+                logger.debug("Lista de sensores para o editor: %s" % e)
+            time.sleep(30)
+
     def on_editor_tray(tray_icon, item):
         # [Backa] Abre o editor visual de presets no navegador (se já estiver aberto, só abre a página)
         logger.info("Editor de tela aberto pela bandeja")
@@ -640,6 +651,7 @@ if __name__ == "__main__":
         write_state("running")
         threading.Thread(target=watch_config_files_safe, args=(tray_icon,), daemon=True).start()
         threading.Thread(target=backa_automation_loop, args=(tray_icon,), daemon=True, name="Automacao").start()
+        threading.Thread(target=backa_inventory_loop, daemon=True, name="Inventario").start()
         threading.Thread(target=save_live_preview, daemon=True).start()
     else:
         logger.info("Theme screenshots mode enabled - program will run %d iterations then close." % args.theme_screenshots)

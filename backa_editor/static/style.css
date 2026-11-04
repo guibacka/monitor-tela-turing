@@ -147,6 +147,18 @@ input[type=text], select { min-width: 0; }
 .rot-item { display: flex; align-items: center; gap: 6px; }
 .rot-item .name { flex: 1; }
 .rot-item button { padding: 1px 6px; font-size: 11px; }
+/* Ícones por estado e alertas */
+.states { flex-direction: column; align-items: stretch !important; gap: 4px !important; }
+.state-row { display: flex; align-items: center; gap: 6px; }
+.state-row .st-label { width: 92px; color: var(--muted); font-size: 12px; }
+.state-row .st-icon { width: 30px; display: inline-flex; justify-content: center; }
+.png-icon { width: 26px; height: 26px; }
+.alert-box { width: min(720px, 94vw); }
+.alert-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.alert-row:last-child { border-bottom: none; }
+.alert-name { flex: 1; min-width: 260px; color: var(--text); }
+.alert-opts { display: flex; align-items: center; gap: 10px; }
+.alert-opts input[type=number] { width: 64px; margin: 0 4px; }
 .modal-foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); }
 
 .toast {

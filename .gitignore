@@ -150,3 +150,8 @@ external/LibreHardwareMonitor/LibreHardwareMonitorLib.sys
 # Configurações locais da automação da tela (rodízio / modo jogo), gravadas pelo editor
 automacao.json
 automacao.tmp
+.monitor.hw.json
+.monitor.hw.tmp
+alertas.json
+alertas.tmp
+.monitor.etw-sessions

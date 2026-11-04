@@ -15,6 +15,7 @@
       <button id="btnNew" title="Criar um preset novo">Novo</button>
       <button id="btnSave" title="Salvar (Ctrl+S)">Salvar</button>
       <button id="btnSaveAs">Salvar como…</button>
+      <button id="btnDelete" class="danger" title="Enviar este preset para a Lixeira do Windows">Excluir</button>
       <button id="btnApply" class="primary" title="Salvar e mostrar na tela de verdade">Aplicar na tela</button>
     </div>
     <div class="group">
@@ -28,6 +29,7 @@
       <button id="btnExport" title="Baixar este preset como .zip (layout + imagens): backup ou levar para outro PC">Exportar</button>
       <button id="btnImport" title="Adicionar um preset a partir de um .zip exportado">Importar…</button>
       <button id="btnAuto" title="Rodízio de presets e modo jogo">Automação…</button>
+      <button id="btnAlerts" title="O que deixa o ícone de alerta e a borda de status em amarelo ou vermelho">Alertas…</button>
     </div>
     <div class="status" id="statusText"></div>
     <button id="btnClose" class="danger" title="Fecha o editor e libera a porta (o monitor da tela continua rodando)">Fechar editor</button>
@@ -114,6 +116,27 @@
         <span style="flex:1"></span>
         <button id="autoCancel">Cancelar</button>
         <button id="autoSave" class="primary">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="alertModal" class="modal hidden">
+    <div class="modal-box auto-box alert-box">
+      <div class="modal-head">
+        <h2>Alertas</h2>
+        <span class="muted small">Valem para todos os presets</span>
+        <span style="flex:1"></span>
+        <button id="alertClose" title="Fechar (Esc)">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="muted small" style="margin:10px 0">O ícone de alerta e a borda de status ficam 🟡 amarelo (atenção) ou 🔴 vermelho (crítico) conforme estas regras. A aparência (ícone de cada nível, cores e espessura da borda) fica nas propriedades de cada item do preset.</div>
+        <div id="alertBody"></div>
+      </div>
+      <div class="modal-foot">
+        <button id="alertReset">Restaurar padrões</button>
+        <span style="flex:1"></span>
+        <button id="alertCancel">Cancelar</button>
+        <button id="alertSave" class="primary">Salvar</button>
       </div>
     </div>
   </div>

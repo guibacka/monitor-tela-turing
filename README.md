@@ -2,9 +2,10 @@
 
 Versão personalizada do [turing-smart-screen-python](https://github.com/mathoudebine/turing-smart-screen-python) para a **Turing Smart Screen 3,5" (revisão A)**, em português:
 
-- **Editor de tela no navegador** (`http://monitor.localhost:8765`): adicionar, mover, redimensionar e remover itens, trocar o fundo, ícones prontos (Tabler Icons) e salvar presets.
+- **Editor de tela no navegador** (`http://monitor.localhost:8765`): adicionar, mover, redimensionar e remover itens, trocar o fundo, ícones prontos (Tabler Icons), salvar e excluir presets (vão para a Lixeira).
 - **Presets:** exportar/importar como `.zip`, **rodízio** entre presets e **modo jogo** (troca para outro preset, como o `ModoJogo`, enquanto um jogo está em primeiro plano). Tudo em **Automação…** no editor.
-- Sensores extras: temperaturas com cores por nível, VRAM, saúde e temperatura dos SSDs, potência de CPU/GPU, clima (Open-Meteo), ícone de alerta, borda de status e **FPS** do jogo em primeiro plano (PresentMon, com leitura direta dos eventos do Windows como reserva para jogos cujo anti-cheat bloqueia o PresentMon).
+- Sensores extras: temperaturas com cores por nível (CPU, GPU, SSDs, RAM e placa-mãe), VRAM, saúde dos SSDs, potência de CPU/GPU, **throttle** de CPU/GPU, **fans** (cada uma num item, escolhendo qual), leitura e escrita dos discos, processo que mais usa CPU/RAM, modo de energia, **cabo de rede e Wi-Fi** conectados (escolhendo qual adaptador é qual), **atualizações** do Windows e do driver NVIDIA, clima (Open-Meteo) e **FPS** do jogo em primeiro plano (PresentMon, com leitura direta dos eventos do Windows como reserva para jogos cujo anti-cheat bloqueia o PresentMon).
+- **Alertas:** ícone de alerta e borda de status em amarelo/vermelho conforme regras configuráveis em **Alertas…** no editor (temperaturas, VRAM, RAM, disco, throttle, saúde dos SSDs, atualizações). Os ícones de cada estado podem ser trocados.
 - Recarrega o tema/configuração sem reiniciar, volta sozinho quando a tela é desconectada e reconectada, e só deixa um monitor rodando por vez.
 - Inicia com o Windows por uma tarefa agendada (como administrador, sem pedir confirmação).
 

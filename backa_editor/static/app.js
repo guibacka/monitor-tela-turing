@@ -64,12 +64,116 @@ function itemLabel(item) {
   if (item.name) return item.name;
   if (item.kind === "data") {
     const src = S.catalog.sources[item.source];
+    if (src.net_kind && item.adapter) return `${src.group} · ${src.label} (${item.adapter}) — ${S.catalog.widgets[item.widget]}`;
+    if (src.hw_slot) {
+      const fan = item.sensor ? fanName(item.sensor) : "";
+      return `${slotTitle(src)}${fan ? ` (${fan})` : ""} — ${S.catalog.widgets[item.widget]}`;
+    }
     return `${src.group} · ${src.label} — ${S.catalog.widgets[item.widget]}`;
   }
   const base = S.catalog.static[item.kind];
   if (item.kind === "label") return `${base}: "${item.text}"`;
   if (item.kind === "symbol") return `${base}: ${item.icon || "?"}`;
   return base;
+}
+
+// ---------------------------------------------------------------------------
+// Fans: cada item mostra uma fan física (escolhida na lista que o monitor grava)
+// ---------------------------------------------------------------------------
+function hwList(src) {
+  return (src.hw_kind === "temp" ? S.catalog.temps : S.catalog.fans) || [];
+}
+
+function slotTitle(src) {
+  return src.hw_kind === "temp" ? `Temperatura ${src.hw_slot}` : `Fan ${src.hw_slot}`;
+}
+
+function fanName(id) {
+  // Nome curto do sensor (fan ou temperatura); pentes de memória viram "RAM DIMM #0"
+  const f = [...(S.catalog.fans || []), ...(S.catalog.temps || [])].find((x) => x.id === id);
+  if (!f) return "";
+  const short = f.name.split(" · ").pop();
+  return id.startsWith("/memory/") ? `RAM ${short}` : short;
+}
+
+function defaultFanFor(source) {
+  // Mesma fan dos outros itens deste slot; senão, a primeira fan girando que ainda não está na tela
+  const same = S.layout.items.find((i) => i.kind === "data" && i.source === source && i.sensor);
+  if (same) return same.sensor;
+  const src = S.catalog.sources[source];
+  const list = hwList(src);
+  const taken = new Set(S.layout.items.filter((i) => i.kind === "data" && i.sensor).map((i) => i.sensor));
+  const free = list.filter((f) => !taken.has(f.id));
+  return ((free.find((f) => (f.rpm ?? f.value) > 0) || free[0]) || {}).id;
+}
+
+function fanSlotUsed(source) {
+  return S.layout.items.some((i) => i.kind === "data" && i.source === source);
+}
+
+function fanSlotVisible(source) {
+  // Na paleta: os slots já usados + o próximo livre (para não listar 8 fans de uma vez)
+  if (fanSlotUsed(source)) return true;
+  const kind = S.catalog.sources[source].hw_kind;
+  const free = Object.keys(S.catalog.sources).find((k) => S.catalog.sources[k].hw_kind === kind && !fanSlotUsed(k));
+  return source === free;
+}
+
+function setAdapter(source, name) {
+  // Texto e ícone do mesmo item de rede olham sempre o mesmo adaptador
+  commit(() => {
+    for (const i of S.layout.items) {
+      if (i.kind !== "data" || i.source !== source) continue;
+      if (name) i.adapter = name;
+      else delete i.adapter;
+    }
+  });
+}
+
+function setFan(source, id) {
+  // Texto, barra e gráfico do mesmo slot mostram sempre a mesma fan
+  commit(() => {
+    for (const i of S.layout.items) {
+      if (i.kind !== "data" || i.source !== source) continue;
+      if (id) i.sensor = id;
+      else delete i.sensor;
+    }
+  });
+}
+
+async function refreshFans() {
+  try {
+    const inv = await api("/api/fans");
+    S.catalog.fans = inv.fans;
+    S.catalog.temps = inv.temps;
+    S.catalog.nets = inv.nets;
+    renderProps();
+    renderLayers();
+    renderPalette();
+    const any = S.catalog.fans.length || (S.catalog.nets || []).length;
+    toast(any ? "Lista de sensores atualizada" : "Nenhum sensor encontrado: o monitor está rodando?", any ? "ok" : "error");
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
+// Ícones por estado: "sym:<nome>:<estilo>:<r>,<g>,<b>" (Tabler) ou nome de um PNG padrão
+function parseSpec(s) {
+  if (!s || !s.startsWith("sym:")) return null;
+  const [, icon, style, c] = s.split(":");
+  return { icon, style, color: (c || "240,240,245").split(",").map(Number) };
+}
+
+function coloredGlyph(icon, style, color) {
+  return symbolGlyph(icon, style, "glyph big").replace('<span class="', `<span style="color:${hex(color)}" class="`);
+}
+
+function iconHtml(entry) {
+  // entry: {icon, style, color} (escolhido) ou texto do ícone padrão
+  if (entry && typeof entry === "object") return coloredGlyph(entry.icon, entry.style, entry.color);
+  const sym = parseSpec(entry);
+  if (sym) return coloredGlyph(sym.icon, sym.style, sym.color);
+  return entry ? `<img class="png-icon" src="/icons/png/${encodeURIComponent(entry)}.png" alt="">` : "";
 }
 
 function itemColor(item) {
@@ -391,6 +495,10 @@ function dataDefaults(source, widget) {
     case "icon": Object.assign(base, { x: 364, y: 8, size: 22 }); break;
     case "border": Object.assign(base, { x: 0, y: 0, thickness: 4 }); break;
   }
+  if (src.hw_slot) {
+    const sensor = defaultFanFor(source);
+    if (sensor) base.sensor = sensor;
+  }
   return base;
 }
 
@@ -429,9 +537,16 @@ function renderPalette() {
     g.className = "pal-group";
     g.innerHTML = `<h3>${group}</h3>`;
     for (const [key, src] of list) {
+      if (src.hw_slot && !fanSlotVisible(key)) continue;
       const row = document.createElement("div");
       row.className = "pal-item";
-      row.innerHTML = `<div class="src">${src.label}</div>`;
+      let label = src.label;
+      if (src.hw_slot) {
+        const sensor = (S.layout.items.find((i) => i.kind === "data" && i.source === key && i.sensor) || {}).sensor;
+        label = fanSlotUsed(key) ? `${slotTitle(src)}${sensor ? ` (${escapeHtml(fanName(sensor))})` : ""}`
+          : `${slotTitle(src)} — ${src.hw_kind === "temp" ? "nova temperatura" : "nova fan"}`;
+      }
+      row.innerHTML = `<div class="src">${label}</div>`;
       const btns = document.createElement("div");
       btns.className = "pal-btns";
       for (const w of src.widgets) {
@@ -558,6 +673,7 @@ function fieldsFor(item) {
       if ("show_unit" in item) F.push({ key: "show_unit", label: "Mostrar unidade", type: "bool" });
       if (src.format) F.push({ key: "format", label: "Formato", type: "text", help: "Ex.: dd/MM/yyyy, EEE, HH:mm:ss" });
       if (src.temp_levels) F.push({ key: "temp_levels", label: "Níveis de cor", type: "levels" });
+      if (src.text_states) F.push({ key: "state_colors", label: "Cor por estado", type: "state_colors" });
       if (!src.custom || src.fast_refresh) F.push({ key: "interval", label: "Atualizar a cada (s)", type: "int", placeholder: String(src.fast_refresh || src.interval || 2) });
       break;
     }
@@ -579,10 +695,17 @@ function fieldsFor(item) {
       break;
     case "icon":
       F.push(...pos, { key: "size", label: "Tamanho", type: "int", placeholder: "22" });
+      if ((S.catalog.sources[item.source] || {}).states) F.push({ key: "state_icons", label: "Ícones", type: "state_icons" });
       break;
     case "border":
       F.push({ key: "thickness", label: "Espessura", type: "int", placeholder: "4" }, { key: "colors", label: "Cores", type: "colors3" });
       break;
+  }
+  const isrc = item.kind === "data" ? S.catalog.sources[item.source] || {} : {};
+  if (isrc.hw_slot) F.unshift({ key: "sensor", label: isrc.hw_kind === "temp" ? "Qual sensor" : "Qual fan", type: "fan" });
+  if (item.kind === "data" && (S.catalog.sources[item.source] || {}).net_kind) {
+    F.unshift({ key: "adapter", label: "Adaptador", type: "net" });
+    if (item.widget === "icon") F.push({ key: "hide_ok", label: "Só mostrar se cair", type: "bool0" });
   }
   F.push({ key: "name", label: "Nome na lista", type: "text", placeholder: itemLabel({ ...item, name: "" }) });
   return F;
@@ -693,6 +816,14 @@ function makeField(f, item) {
       lbl.querySelector("input").onchange = (e) => set(e.target.checked ? rgb(inp.value) : null);
       row.appendChild(lbl);
     }
+  } else if (f.type === "bool0") {
+    // Desmarcado por padrão
+    const inp = document.createElement("input");
+    inp.type = "checkbox";
+    inp.checked = !!val;
+    inp.onchange = () => set(inp.checked || undefined);
+    row.appendChild(inp);
+    row.insertAdjacentHTML("beforeend", `<span class="muted small">o ícone some enquanto estiver conectado</span>`);
   } else if (f.type === "bool") {
     const inp = document.createElement("input");
     inp.type = "checkbox";
@@ -734,6 +865,102 @@ function makeField(f, item) {
       r.appendChild(inp);
       r.insertAdjacentHTML("beforeend", "°C");
       row.appendChild(r);
+    }
+  } else if (f.type === "fan") {
+    const src = S.catalog.sources[item.source];
+    const fans = hwList(src);
+    const isTemp = src.hw_kind === "temp";
+    const sel = document.createElement("select");
+    sel.add(new Option(`Automático (${src.hw_slot}º ${isTemp ? "sensor" : "fan"} encontrado)`, ""));
+    for (const fan of fans) {
+      const [hw, nm] = fan.name.includes(" · ") ? fan.name.split(" · ") : ["", fan.name];
+      const now = isTemp ? `${fan.value ?? "--"}°C` : `${fan.rpm ?? "--"} RPM`;
+      sel.add(new Option(`${nm} — ${now}${hw ? ` · ${hw}` : ""}`, fan.id, false, fan.id === val));
+    }
+    if (val && !fans.some((x) => x.id === val)) sel.add(new Option(`${val} (não encontrada agora)`, val, false, true));
+    sel.onchange = () => setFan(item.source, sel.value || undefined);
+    row.appendChild(sel);
+    const b = document.createElement("button");
+    b.textContent = "↻";
+    b.title = "Atualizar a lista (com o RPM de agora, para saber qual é qual)";
+    b.onclick = refreshFans;
+    row.appendChild(b);
+    row.insertAdjacentHTML("beforeend", fans.length
+      ? `<div class="muted small">${isTemp ? "A placa-mãe não diz o nome de cada temperatura: compare o valor de agora para saber qual é qual" : "Fans com 0 RPM estão paradas ou sem sensor de rotação (ex.: ligadas num hub)"}. Dica: renomeie o item em "Nome na lista".</div>`
+      : `<div class="muted small">A lista aparece com o monitor rodando. Clique em ↻ depois de abri-lo.</div>`);
+  } else if (f.type === "net") {
+    const src = S.catalog.sources[item.source];
+    const nets = S.catalog.nets || [];
+    const kindName = { cabo: "cabo", wifi: "Wi-Fi", outro: "outro" };
+    const sel = document.createElement("select");
+    sel.add(new Option(`Automático (primeiro ${src.net_kind === "wifi" ? "Wi-Fi" : "cabo"} físico)`, ""));
+    // Primeiro os do tipo certo, depois os outros (ex.: um adaptador USB que o Windows classifica diferente)
+    const sorted = [...nets].sort((a, b) => (a.kind !== src.net_kind) - (b.kind !== src.net_kind) || a.virtual - b.virtual);
+    for (const n of sorted) {
+      const status = n.up ? `conectado${n.speed ? ` ${n.speed >= 1000 ? n.speed / 1000 + " Gbps" : n.speed + " Mbps"}` : ""}` : "desconectado";
+      sel.add(new Option(`${n.name} — ${kindName[n.kind] || n.kind}${n.virtual ? ", virtual" : ""}, ${status}${n.desc ? ` · ${n.desc}` : ""}`,
+        n.name, false, n.name === val));
+    }
+    if (val && !nets.some((n) => n.name === val)) sel.add(new Option(`${val} (não encontrado agora)`, val, false, true));
+    sel.onchange = () => setAdapter(item.source, sel.value || undefined);
+    row.appendChild(sel);
+    const b = document.createElement("button");
+    b.textContent = "↻";
+    b.title = "Atualizar a lista de adaptadores";
+    b.onclick = refreshFans;
+    row.appendChild(b);
+    if (!nets.length) row.insertAdjacentHTML("beforeend", `<div class="muted small">A lista aparece com o monitor rodando. Clique em ↻ depois de abri-lo.</div>`);
+  } else if (f.type === "state_icons") {
+    const src = S.catalog.sources[item.source];
+    const cur = { ...(val || {}) };
+    row.classList.add("states");
+    for (const [state, label] of src.states) {
+      const r = document.createElement("div");
+      r.className = "row state-row";
+      const chosen = cur[state];
+      const def = (src.default_icons || {})[state] || "";
+      const defSym = parseSpec(def);
+      r.insertAdjacentHTML("beforeend", `<span class="st-label">${escapeHtml(label)}</span><span class="st-icon">${iconHtml(chosen || def)}</span>`);
+      const color = document.createElement("input");
+      color.type = "color";
+      color.value = hex((chosen || defSym || {}).color || [240, 240, 245]);
+      color.disabled = !chosen && !defSym;
+      color.title = color.disabled ? "Escolha um ícone da biblioteca para mudar a cor" : "Cor do ícone";
+      color.onchange = () => {
+        const base = chosen || defSym;
+        set({ ...cur, [state]: { icon: base.icon, style: base.style, color: rgb(color.value) } });
+      };
+      const pick = document.createElement("button");
+      pick.textContent = "Trocar…";
+      pick.onclick = () => pickSymbol((icon, style) => set({ ...cur, [state]: { icon, style, color: (chosen || defSym || {}).color || [240, 240, 245] } }),
+        (chosen || defSym || {}).style || "filled");
+      r.append(color, pick);
+      if (chosen) {
+        const reset = document.createElement("button");
+        reset.textContent = "Padrão";
+        reset.title = "Voltar ao ícone padrão";
+        reset.onclick = () => {
+          const next = { ...cur };
+          delete next[state];
+          set(Object.keys(next).length ? next : undefined);
+        };
+        r.appendChild(reset);
+      }
+      row.appendChild(r);
+    }
+  } else if (f.type === "state_colors") {
+    const src = S.catalog.sources[item.source];
+    const cur = { ...(val || {}) };
+    for (const [state, label, def] of src.text_states) {
+      if (state === "OK") continue; // o estado normal usa a "Cor" do item
+      const lbl = document.createElement("label");
+      lbl.className = "check";
+      const inp = document.createElement("input");
+      inp.type = "color";
+      inp.value = hex(cur[state] || def || [240, 240, 245]);
+      inp.onchange = () => set({ ...cur, [state]: rgb(inp.value) });
+      lbl.append(inp, document.createTextNode(label));
+      row.appendChild(lbl);
     }
   } else if (f.type === "colors3") {
     const cur = { VERDE: [90, 220, 120], AMARELO: [255, 200, 0], VERMELHO: [255, 70, 70], ...(val || {}) };
@@ -1072,6 +1299,85 @@ async function openAutomation() {
 }
 
 // ---------------------------------------------------------------------------
+// Alertas: o que deixa o ícone de alerta e a borda de status em amarelo/vermelho (alertas.json, vale para todos
+// os presets). A aparência (ícones e cores da borda) fica nas propriedades dos itens.
+// ---------------------------------------------------------------------------
+async function openAlerts() {
+  let res;
+  try {
+    res = await api("/api/alerts");
+  } catch (e) {
+    toast(e.message, "error");
+    return;
+  }
+  let cur = clone(res.settings);
+  const modal = $("alertModal");
+  const draw = () => {
+    const body = $("alertBody");
+    body.innerHTML = "";
+    for (const rule of res.rules) {
+      const v = cur[rule.key];
+      const row = document.createElement("div");
+      row.className = "alert-row";
+      const on = document.createElement("label");
+      on.className = "check alert-name";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = v.on;
+      cb.onchange = () => { v.on = cb.checked; draw(); };
+      on.append(cb, document.createTextNode(rule.label));
+      row.appendChild(on);
+      const opts = document.createElement("div");
+      opts.className = "alert-opts";
+      const num = (key, label, unit, empty) => {
+        const w = document.createElement("label");
+        w.className = "check";
+        const inp = document.createElement("input");
+        inp.type = "number";
+        inp.value = v[key] ?? "";
+        inp.placeholder = empty ? "—" : "";
+        if (empty) inp.title = `Vazio = ${empty}`;
+        inp.disabled = !v.on;
+        inp.onchange = () => { v[key] = inp.value === "" ? null : parseInt(inp.value, 10); };
+        w.append(document.createTextNode(label), inp, document.createTextNode(unit));
+        opts.appendChild(w);
+      };
+      if (rule.kind === "limits") {
+        num("AMARELO", "🟡 a partir de", rule.unit, "não usa");
+        num("VERMELHO", "🔴 a partir de", rule.unit, "não usa");
+      } else {
+        const sel = document.createElement("select");
+        sel.add(new Option("🟡 Atenção", "AMARELO", false, v.nivel === "AMARELO"));
+        sel.add(new Option("🔴 Crítico", "VERMELHO", false, v.nivel === "VERMELHO"));
+        sel.disabled = !v.on;
+        sel.onchange = () => (v.nivel = sel.value);
+        opts.appendChild(sel);
+        if ("limite" in v) num("limite", "limite", rule.unit);
+      }
+      row.appendChild(opts);
+      body.appendChild(row);
+    }
+  };
+  draw();
+  const close = () => { modal.classList.add("hidden"); S.modalClose = null; };
+  $("alertClose").onclick = close;
+  $("alertCancel").onclick = close;
+  $("alertReset").onclick = () => { cur = clone(res.defaults); draw(); };
+  modal.onmousedown = (e) => { if (e.target === modal) close(); };
+  $("alertSave").onclick = async () => {
+    try {
+      await api("/api/alerts", { settings: cur });
+      close();
+      toast("Alertas salvos. O monitor aplica em alguns segundos.", "ok");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  };
+  S.modalClose = close;
+  modal.classList.remove("hidden");
+}
+
+// ---------------------------------------------------------------------------
 // Presets: carregar, novo, salvar, aplicar
 // ---------------------------------------------------------------------------
 async function loadPresets() {
@@ -1081,6 +1387,24 @@ async function loadPresets() {
   const sel = $("presetSelect");
   sel.innerHTML = "";
   for (const p of S.presets) sel.add(new Option(p === S.active ? `${p} (na tela)` : p, p, false, p === S.name));
+  const del = $("btnDelete");
+  del.disabled = S.name === S.active || S.presets.length <= 1;
+  del.title = del.disabled ? "Não dá para excluir o preset que está na tela (aplique outro antes)" : "Enviar este preset para a Lixeira do Windows";
+}
+
+async function deletePreset() {
+  const name = S.name;
+  if (!confirm(`Excluir o preset "${name}"?\n\nA pasta dele vai para a Lixeira do Windows (dá para recuperar de lá).`)) return;
+  try {
+    const res = await api("/api/delete", { name });
+    S.dirty = false;
+    const { presets, active } = await api("/api/presets");
+    S.presets = presets;
+    await openPreset(presets.includes(active) ? active : presets[0]);
+    toast(`Preset "${name}" enviado para a Lixeira.${res.note ? " " + res.note : ""}`, "ok");
+  } catch (e) {
+    toast(e.message, "error");
+  }
 }
 
 async function openPreset(name) {
@@ -1247,12 +1571,14 @@ async function init() {
   $("btnSave").onclick = () => save();
   $("btnSaveAs").onclick = async () => { const n = askName("Salvar como (nome do preset):", `${S.name} 2`); if (n && await save(n)) await openPreset(n); };
   $("btnApply").onclick = () => save(S.name, true);
+  $("btnDelete").onclick = deletePreset;
   $("btnUndo").onclick = undo;
   $("btnRedo").onclick = redo;
   $("btnClose").onclick = closeEditor;
   $("btnExport").onclick = exportPreset;
   $("btnImport").onclick = importPreset;
   $("btnAuto").onclick = openAutomation;
+  $("btnAlerts").onclick = openAlerts;
   $("zoomSelect").onchange = (e) => setZoom(parseFloat(e.target.value));
   $("stage").addEventListener("mousedown", (e) => { if (e.target.id === "overlay" || e.target.id === "stageImg") select(null); });
   window.addEventListener("keydown", onKey);

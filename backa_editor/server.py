@@ -26,6 +26,7 @@ os.chdir(ROOT)
 
 from library.backa import layout as L  # noqa: E402
 from library.backa import automation as A  # noqa: E402
+from library.backa import alerts as AL  # noqa: E402
 
 HOST = "127.0.0.1"
 # Endereço amigável: os navegadores enviam qualquer *.localhost para o próprio PC, sem configurar nada no Windows.
@@ -46,6 +47,15 @@ TOKEN = secrets.token_urlsafe(24)
 IDLE_TIMEOUT_S = 30 * 60
 NAME_RE = re.compile(r"^[A-Za-z0-9 _\-]{1,40}$")
 last_request = time.time()
+
+
+def hardware_inventory(key: str) -> list:
+    # Fans / adaptadores de rede encontrados pelo monitor (ele grava .monitor.hw.json a cada 30 s; o editor não lê
+    # os sensores direto porque isso exige administrador)
+    try:
+        return json.loads((ROOT / ".monitor.hw.json").read_text(encoding="utf-8")).get(key) or []
+    except Exception:
+        return []
 
 
 def active_theme() -> str:
@@ -83,6 +93,52 @@ def monitor_info() -> dict:
 
 def monitor_state() -> str:
     return monitor_info()["state"]
+
+
+# --- Excluir preset: vai para a Lixeira do Windows (dá para recuperar) ---
+def send_to_recycle_bin(path: Path):
+    import ctypes
+    from ctypes import wintypes
+
+    class SHFILEOPSTRUCTW(ctypes.Structure):
+        _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT), ("pFrom", wintypes.LPCWSTR),
+                    ("pTo", wintypes.LPCWSTR), ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL),
+                    ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR)]
+
+    FO_DELETE, FOF_SILENT, FOF_NOCONFIRMATION, FOF_ALLOWUNDO, FOF_NOERRORUI = 3, 0x4, 0x10, 0x40, 0x400
+    # pFrom termina com dois caracteres nulos: um aqui e outro colocado pelo ctypes
+    op = SHFILEOPSTRUCTW(None, FO_DELETE, str(path) + "\0", None,
+                         FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI, False, None, None)
+    code = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+    if code != 0 or op.fAnyOperationsAborted or path.exists():
+        raise OSError(f"Não foi possível enviar para a Lixeira (código {code})")
+
+
+def delete_preset(name: str) -> dict:
+    presets = L.list_presets()
+    if name not in presets:
+        raise ValueError("Preset não encontrado")
+    if len(presets) <= 1:
+        raise ValueError("É o único preset: crie outro antes de excluir este")
+    info = monitor_info()
+    if name in (active_theme(), info.get("theme")):
+        raise ValueError("Este preset está na tela agora: aplique outro antes de excluir")
+    settings = A.load_settings()
+    if settings["game"]["preset"] == name:
+        raise ValueError("Este é o preset do modo jogo: troque em Automação… antes de excluir")
+    note = ""
+    if name in settings["rotation"]["presets"]:
+        settings["rotation"]["presets"] = [p for p in settings["rotation"]["presets"] if p != name]
+        note = "Ele também saiu do rodízio."
+        if settings["rotation"]["enabled"] and len(settings["rotation"]["presets"]) < 2:
+            settings["rotation"]["enabled"] = False
+            note = "Ele também saiu do rodízio, que foi desligado (ficou com menos de 2 presets)."
+        A.save_settings(settings)
+    send_to_recycle_bin(L.THEMES_DIR / name)
+    preview = ROOT / f".live-preview-{name}.png"
+    if preview.exists():
+        preview.unlink()
+    return {"deleted": name, "note": note}
 
 
 # --- Exportar / importar presets (.zip com o layout.json e as imagens) ---
@@ -233,6 +289,13 @@ class Handler(BaseHTTPRequestHandler):
             if STATIC not in file.parents or not file.is_file():
                 return self._error("Não encontrado", 404)
             return self._send(200, file.read_bytes(), mimetypes.guess_type(file.name)[0] or "application/octet-stream")
+        m = re.fullmatch(r"/icons/png/([a-z0-9_]{1,40})\.png", url.path)
+        if m:
+            # Ícones padrão (PNG) do alerta e do clima, para o editor mostrar ao lado dos escolhidos
+            file = L.ICONS_DIR / f"{m.group(1)}.png"
+            if not file.is_file():
+                return self._error("Não encontrado", 404)
+            return self._send(200, file.read_bytes(), "image/png")
         if url.path in ("/icons/tabler-icons.ttf", "/icons/tabler-icons-filled.ttf"):
             # Fontes da biblioteca de ícones (a página usa para mostrar os ícones; a tela usa as mesmas)
             file = L.SYMBOLS_DIR / url.path.rsplit("/", 1)[1]
@@ -252,7 +315,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if url.path == "/api/catalog":
                 return self._json({"sources": L.SOURCES, "widgets": L.WIDGET_LABELS, "static": L.STATIC_KINDS,
-                                   "fonts": L.list_fonts()})
+                                   "fonts": L.list_fonts(), "fans": hardware_inventory("fans"),
+                                   "temps": hardware_inventory("temps"), "nets": hardware_inventory("nets")})
+            if url.path == "/api/fans":
+                return self._json({"fans": hardware_inventory("fans"), "temps": hardware_inventory("temps"),
+                                   "nets": hardware_inventory("nets")})
+            if url.path == "/api/alerts":
+                rules = [{"key": k, "label": lbl, "unit": unit, "kind": kind} for k, lbl, unit, kind, _ in AL.RULES]
+                return self._json({"settings": AL.load_settings(), "rules": rules, "defaults": AL.normalize({})})
             if url.path == "/api/icons":
                 return self._json(L.symbol_catalog())
             if url.path == "/api/automation":
@@ -308,7 +378,7 @@ class Handler(BaseHTTPRequestHandler):
             path = urlparse(self.path).path
             if path == "/api/render":
                 layout = data["layout"]
-                img, boxes = L.render_preview(layout, L.THEMES_DIR / self._preset_name(layout.get("name") or "BackaRGB"))
+                img, boxes = L.render_preview(layout, L.THEMES_DIR / self._preset_name(layout.get("name") or "Backa"))
                 return self._json({"image": png_data_url(img), "boxes": boxes, "problems": L.validate_layout(layout)})
             if path in ("/api/save", "/api/apply"):
                 name = self._preset_name(data["name"])
@@ -331,6 +401,10 @@ class Handler(BaseHTTPRequestHandler):
                 if settings["game"]["enabled"] and not settings["game"]["preset"]:
                     raise ValueError("Escolha o preset do modo jogo")
                 return self._json({"settings": A.save_settings(settings)})
+            if path == "/api/delete":
+                return self._json(delete_preset(self._preset_name(data["name"])))
+            if path == "/api/alerts":
+                return self._json({"settings": AL.save_settings(data.get("settings"))})
             if path == "/api/import":
                 name = self._preset_name(data["name"])
                 raw = base64.b64decode(data["data"].split(",", 1)[-1])
