@@ -1,11 +1,13 @@
-# FPS pelo rastreamento de eventos do Windows (ETW), reserva para quando o PresentMon não consegue rodar (Backa).
+# Captura de FPS própria (Backa), pelo rastreamento de eventos do Windows (ETW) — o mesmo caminho da Xbox Game Bar.
 #
-# Alguns anti-cheats (ex.: o do Battlefield 6) impedem criar sessões de captura NOVAS enquanto o jogo está aberto,
-# mas as sessões criadas antes continuam funcionando. Então:
-#   - prepare(): cria a sessão "BackaFPS" (eventos de Present do DirectX) já quando o monitor abre. Ela fica ativa
-#     até o PC reiniciar, então continua disponível mesmo se o monitor reiniciar no meio de um jogo;
-#   - fps(pid): se o PresentMon estiver fora do ar, abre o leitor res/backa/etw-fps-reader.ps1 (C#, rápido) nas
-#     sessões "BackaFPS*" que existirem e devolve o FPS do processo pedido.
+# O Windows anuncia um evento a cada quadro apresentado pelo DirectX (DXGI: DirectX 10/11/12; D3D9). Quem escuta não
+# toca no jogo. Alguns anti-cheats (ex.: o do Battlefield 6) impedem criar escutas NOVAS com o jogo aberto, mas as que
+# já existem continuam funcionando. Por isso:
+#   - start(): o monitor chama ao iniciar (antes de qualquer jogo): cria a sessão "BackaFPS" e abre o leitor
+#     res/backa/etw-fps-reader.ps1 (C#, rápido), que fica ligado o tempo todo. A sessão dura até o PC reiniciar,
+#     então um reinício do monitor no meio do jogo só se reconecta a ela;
+#   - fps(pid) / low(pid): FPS do último segundo e "1% low" dos últimos 10 s do processo pedido.
+# O PresentMon fica como reserva, para quando esta captura não estiver funcionando.
 # Precisa rodar como administrador (o monitor já roda assim).
 import ctypes
 import subprocess
@@ -126,7 +128,6 @@ def _kill_with_parent(proc, logger=None):
 
 
 class Reader:
-    IDLE = 60  # sem ninguém pedindo FPS por este tempo (o PresentMon voltou): fecha o leitor
     RETRY = 30
 
     def __init__(self, script, logger=None):
@@ -137,33 +138,33 @@ class Reader:
         self.lock = threading.Lock()
         self.proc = self.job = None
         self.values, self.at, self.session = {}, 0.0, None
-        self.prepared = False
-        self.retry_at = self.wanted_at = 0.0
+        self.retry_at = 0.0
         self.launches = 0
+        self.launched_at = 0.0
 
-    def prepare(self):
-        # Uma vez, ao abrir o monitor: cria a sessão BackaFPS enquanto nenhum jogo bloqueia
-        now = time.monotonic()
-        if not self.prepared:
-            self.prepared = True
-            err = start_session()
-            if self.logger:
-                self.logger.debug("FPS: sessão %s %s" % (SESSION, {0: "criada", ERROR_ALREADY_EXISTS: "já existia"}
-                                                         .get(err, "não pôde ser criada (erro %s)" % err)))
-        if self.proc is not None and now - self.wanted_at > self.IDLE:
-            self.close()
+    def start(self):
+        # Ao abrir o monitor: cria a sessão e já deixa o leitor escutando (antes de qualquer jogo abrir)
+        if self.proc is None:
+            self.retry_at = time.monotonic() + self.RETRY
+            self._launch()
+
+    def _ensure(self):
+        if self.proc is None and time.monotonic() >= self.retry_at:
+            self.retry_at = time.monotonic() + self.RETRY
+            self._launch()
 
     def _launch(self):
         self.launches += 1
         err = start_session()
+        if self.logger:
+            self.logger.debug("FPS: sessão %s %s" % (SESSION, {0: "criada", ERROR_ALREADY_EXISTS: "já existia"}
+                                                     .get(err, "não pôde ser criada agora (erro %s)" % err)))
         # A BackaFPS entra sempre: mesmo que o Windows negue criá-la agora (anti-cheat), ela pode já existir
-        # desde antes do jogo. Se não existir, o leitor só informa que aquela sessão não abriu.
-        names = [SESSION] + [n for n in existing_sessions(self.logger) if n.lower() != SESSION.lower()]
+        # desde antes do jogo. As outras BackaFPS* (de PresentMon) só entram se a BackaFPS não pôde ser criada.
+        names = [SESSION]
+        if err not in (0, ERROR_ALREADY_EXISTS):
+            names += [n for n in existing_sessions(self.logger) if n.lower() != SESSION.lower()]
         log = self.logger.info if self.logger and self.launches == 1 else (self.logger.debug if self.logger else None)
-        if not names:
-            if log:
-                log("FPS: nenhuma sessão de eventos disponível (erro %s ao criar %s)" % (err, SESSION))
-            return
         try:
             proc = subprocess.Popen(
                 ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", self.script,
@@ -176,8 +177,9 @@ class Reader:
             return
         self.job = _kill_with_parent(proc, self.logger)
         self.proc = proc
+        self.launched_at = time.monotonic()
         if log:
-            log("FPS: leitura direta dos eventos do Windows em %s" % ", ".join(names))
+            log("FPS: captura própria escutando %s" % ", ".join(names))
         tail = deque(maxlen=5)
         threading.Thread(target=self._drain, args=(proc, tail), daemon=True, name="ETW_FPS_err").start()
         threading.Thread(target=self._read, args=(proc, tail), daemon=True, name="ETW_FPS").start()
@@ -200,17 +202,17 @@ class Reader:
                 if parts[0] == "FPS" and len(parts) >= 2:
                     values = {}
                     for item in parts[2:]:
-                        pid, _, fps = item.partition(":")
-                        if pid.isdigit() and fps.isdigit():
-                            values[int(pid)] = int(fps)
+                        fields = item.split(":")
+                        if len(fields) >= 2 and all(f.isdigit() for f in fields):
+                            values[int(fields[0])] = (int(fields[1]), int(fields[2]) if len(fields) > 2 else 0)
                     with self.lock:
                         self.values, self.at = values, time.monotonic()
                     if parts[1] != self.session:
                         self.session = parts[1]
                         if self.logger:
-                            self.logger.debug("FPS: lendo os quadros pela sessão %s" % self.session)
+                            self.logger.info("FPS: captura própria recebendo os quadros pela sessão %s" % self.session)
                 elif parts[0] == "END" and self.logger:
-                    self.logger.debug("FPS: leitura da sessão %s terminou (código %s)" % tuple((parts + ["?"])[1:3]))
+                    self.logger.debug("FPS: sessão %s indisponível (código %s)" % tuple((parts + ["?"])[1:3]))
         except Exception:
             pass
         try:
@@ -219,30 +221,55 @@ class Reader:
             pass
         if self.proc is proc:
             self.proc = None
+            self.session = None
             self.retry_at = time.monotonic() + self.RETRY
             if self.logger:
                 msg = " | ".join(tail)[-300:]
-                self.logger.debug("FPS: leitor de eventos encerrado (código %s)%s" % (proc.returncode,
-                                                                                    (": " + msg) if msg else ""))
+                self.logger.warning("FPS: captura própria parou (código %s)%s. Nova tentativa em %d s; enquanto isso, "
+                                    "o PresentMon é usado como reserva" % (proc.returncode, (": " + msg) if msg else "",
+                                                                           self.RETRY))
+
+    def healthy(self) -> bool:
+        # Leitor rodando e conectado a uma sessão que está entregando (ele informa a cada 0,5 s)
+        self._ensure()
+        with self.lock:
+            return self.proc is not None and self.session is not None and time.monotonic() - self.at < 3
+
+    def starting(self) -> bool:
+        # Acabou de abrir e ainda não recebeu nada (leva ~1 s): não é hora de recorrer à reserva
+        return self.proc is not None and self.session is None and time.monotonic() - self.launched_at < 10
+
+    def best(self, pids):
+        # (fps, low) do processo pedido; se ele não desenha quadros, do processo filho que mais desenha
+        # (navegadores e apps como Discord desenham num processo filho; jogos desenham no próprio processo)
+        with self.lock:
+            if time.monotonic() - self.at >= 3:
+                return None, None
+            values = self.values
+        if not pids:
+            return None, None
+        own = values.get(pids[0])
+        if own and own[0]:
+            return own[0], own[1] or None
+        kids = [values[p] for p in pids[1:] if p in values and values[p][0]]
+        if not kids:
+            return None, None
+        fps, low = max(kids)
+        return fps, low or None
 
     def fps(self, pid):
-        now = time.monotonic()
-        self.wanted_at = now
-        if self.proc is None and now >= self.retry_at:
-            self.retry_at = now + self.RETRY
-            self._launch()
-        with self.lock:
-            if now - self.at > 2:
-                return None
-            return self.values.get(pid) or None
+        return self.best([pid])[0]
+
+    def low(self, pid):
+        return self.best([pid])[1]
 
     def debug(self):
         with self.lock:
-            top = sorted(((f, p) for p, f in self.values.items()), reverse=True)[:5]
+            top = sorted(((f[0], f[1], p) for p, f in self.values.items()), reverse=True)[:5]
             age = time.monotonic() - self.at if self.at else None
         return "leitor=%s sessão=%s há=%s top=%s" % ("ativo" if self.proc else "parado", self.session,
                                                      "%.1fs" % age if age is not None else "-",
-                                                     ", ".join("%d:%d" % (p, f) for f, p in top))
+                                                     ", ".join("%d:%d/%d" % (p, f, lo) for f, lo, p in top))
 
     def close(self):
         proc, self.proc = self.proc, None

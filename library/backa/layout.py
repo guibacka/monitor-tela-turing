@@ -57,6 +57,8 @@ SOURCES = {
                   "sample": 59, "sample_text": " 118 W", "max": 200},
     "GPU_FPS": {"group": "GPU", "label": "FPS do jogo em primeiro plano", "custom": "BackaFps", "widgets": ["text", "line_graph"],
                 "sample": 60, "sample_text": " 144 FPS", "max": 240, "fast_refresh": 1},
+    "GPU_FPS_LOW": {"group": "GPU", "label": "FPS 1% low (piores quadros dos últimos 10 s)", "custom": "BackaFpsLow",
+                    "widgets": ["text", "line_graph"], "sample": 45, "sample_text": " 118 low", "max": 240},
     "RAM_USED": {"group": "RAM", "label": "Em uso (GB)", "custom": "BackaRamUsed", "widgets": ["text", "bar", "line_graph"],
                  "sample": 45, "sample_text": "14.4 GB"},
     "RAM_FREE": {"group": "RAM", "label": "Livre (GB)", "custom": "BackaRamFree", "widgets": ["text"], "sample_text": "16.8 GB"},

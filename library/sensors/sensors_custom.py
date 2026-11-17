@@ -804,13 +804,13 @@ def _read_presentmon(proc):
     err = " | ".join(tail)[-300:]
     _fps["fails"] = _fps.get("fails", 0) + 1
     delay = min(60, 5 * _fps["fails"])
-    if _fps.get("stopping"):
-        return  # encerrado de propósito pelo monitor
+    if _fps.get("stopping") or _fps.get("proc") is not proc:
+        return  # encerrado de propósito pelo monitor (saindo, ou a captura própria voltou a funcionar)
     # "Acesso negado" (código 6) se repete enquanto um anti-cheat bloqueia: avisa uma vez, depois só no modo debug
     log = logger.debug if proc.returncode == 6 and _fps.get("denied_warned") else logger.warning
     if proc.returncode == 6 and not _fps.get("denied_warned"):
         _fps["denied_warned"] = True
-        err += " (o FPS continua pela leitura direta dos eventos, se houver uma sessão disponível)"
+        err += " (a captura própria de FPS continua, se estiver funcionando)"
     log("FPS: o PresentMon foi encerrado (código %s). %s Nova tentativa em %d s"
         % (proc.returncode, ("Mensagem: " + err + ".") if err else "", delay))
     _fps["proc"] = None
@@ -841,10 +841,10 @@ def backa_shutdown():
         proc.terminate()
 
 
-# Reserva: leitura direta dos eventos de vídeo do Windows (library/backa/etwfps.py). Usada quando o PresentMon não
-# consegue abrir uma sessão nova (ex.: anti-cheat do Battlefield 6 com o jogo aberto). Também deixa a sessão
-# "BackaFPS" criada desde o início do monitor, para que um reinício durante o jogo continue tendo FPS.
-_etw = {"reader": None}
+# Captura própria de FPS (library/backa/etwfps.py): é a fonte principal. Começa a escutar quando o monitor abre
+# (backa_fps_start), antes de qualquer jogo, porque alguns anti-cheats bloqueiam escutas novas com o jogo aberto.
+# O PresentMon fica como reserva: só roda enquanto a captura própria não está funcionando.
+_etw = {"reader": None, "healthy_since": None}
 
 
 def _etw_reader():
@@ -856,27 +856,61 @@ def _etw_reader():
                 Path(config.MAIN_DIRECTORY) / "res" / "backa" / "etw-fps-reader.ps1", logger)
         except Exception as e:
             reader = _etw["reader"] = False
-            logger.warning("FPS: leitura direta indisponível (%s)" % e)
+            logger.warning("FPS: captura própria indisponível (%s)" % e)
     return reader or None
 
 
-def _etw_fps(pid, launch):
-    # launch=True: o PresentMon está fora do ar, pode abrir o leitor. False: só usa se ele já estiver aberto.
+def backa_fps_start():
+    # Chamado pelo monitor logo ao iniciar: a escuta já fica pronta antes de qualquer jogo abrir
+    if _fps_enabled():
+        reader = _etw_reader()
+        if reader is not None:
+            reader.start()
+
+
+def _own_capture_ok() -> bool:
     reader = _etw_reader()
-    if reader is None:
-        return None
     try:
-        reader.prepare()
-        if not launch and reader.proc is None:
-            return None
-        value = reader.fps(pid)
-        if time.time() >= _etw.get("debug_at", 0):
-            _etw["debug_at"] = time.time() + 60
-            logger.debug("FPS (leitura direta) pid=%s fps=%s: %s" % (pid, value, reader.debug()))
-        return value
+        ok = reader is not None and reader.healthy()
     except Exception as e:
-        logger.debug("FPS (leitura direta): %s" % e)
+        logger.debug("FPS (captura própria): %s" % e)
+        ok = False
+    _etw["healthy_since"] = (_etw["healthy_since"] or time.time()) if ok else None
+    return ok
+
+
+def _stop_presentmon():
+    # A captura própria voltou: encerra o PresentMon (reserva) do jeito certo, liberando a sessão dele
+    proc = _fps.get("proc")
+    _fps.update(proc=None, started=False)
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        subprocess.run([str(PRESENTMON), "--terminate_existing_session", "--session_name", PRESENTMON_SESSION],
+                       capture_output=True, timeout=5, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        proc.wait(timeout=3)
+    except Exception:
+        pass
+    if proc.poll() is None:
+        proc.terminate()
+    logger.info("FPS: captura própria funcionando; PresentMon (reserva) encerrado")
+
+
+def _presentmon_fps(pid):
+    # Reserva: FPS pelo PresentMon (inicia se preciso)
+    if not _fps["started"] and time.time() >= _fps.get("retry_at", 0):
+        _start_presentmon()
+    if _fps["proc"] is None:
         return None
+    now = time.time()
+    with _fps["lock"]:
+        for old in [p for p, f in _fps["frames"].items() if not f or now - f[-1][0] > 5]:
+            del _fps["frames"][old]
+        recent = [ms for t, ms in _fps["frames"].get(pid, ()) if now - t <= 1.0]
+    if not recent:
+        return None
+    avg = sum(recent) / len(recent)
+    return int(round(1000.0 / avg)) if avg > 0 else None
 
 
 def _start_presentmon():
@@ -908,39 +942,57 @@ def _foreground_pid():
         return None
 
 
+_fg_tree = {"pid": None, "time": 0.0, "pids": []}
+
+
+def _foreground_pids() -> list:
+    # Programa em primeiro plano + processos filhos com o mesmo nome (navegadores e apps como Discord desenham num
+    # processo filho do mesmo programa). Filhos de outro nome ficam de fora: senão a área de trabalho (explorer.exe)
+    # "herdaria" o FPS de todo programa aberto por ela. Relido a cada 5 s ou quando o programa muda.
+    pid = _foreground_pid()
+    if pid is None:
+        return []
+    if _fg_tree["pid"] != pid or time.time() - _fg_tree["time"] > 5:
+        try:
+            proc = psutil.Process(pid)
+            name = proc.name().lower()
+            kids = [c.pid for c in proc.children(recursive=True) if c.name().lower() == name]
+        except Exception:
+            kids = []
+        _fg_tree.update(pid=pid, time=time.time(), pids=[pid] + kids)
+    return _fg_tree["pids"]
+
+
 def current_fps():
-    # FPS médio do último segundo do programa em primeiro plano; None ("-- FPS") se ele não está desenhando quadros
+    # FPS do programa em primeiro plano; None ("-- FPS") se ele não está desenhando quadros
     if not _fps_enabled():
         return None
+    pids = _foreground_pids()
+    pid = pids[0] if pids else None
+    reader = _etw_reader()
+    if reader is not None:
+        reader._ensure()  # abre a captura própria se ainda não estiver aberta
+        if reader.starting():
+            return None  # a captura própria está abrindo (~1 s): não aciona a reserva à toa
+    if _own_capture_ok():
+        value, low = reader.best(pids)
+        # Captura própria estável há 1 min: a reserva não precisa mais ficar rodando
+        if _fps["proc"] is not None and time.time() - _etw["healthy_since"] >= 60:
+            _stop_presentmon()
+        if time.time() >= _etw.get("debug_at", 0):
+            _etw["debug_at"] = time.time() + 60
+            logger.debug("FPS (captura própria) pid=%s fps=%s low=%s: %s" % (pid, value, low, reader.debug()))
+        return value
     if config.CONFIG_DATA["config"].get("FPS_LEITURA_DIRETA", False):
-        return _etw_fps(_foreground_pid(), True)  # forçado no config.yaml: não usa o PresentMon
-    if not _fps["started"] and time.time() >= _fps.get("retry_at", 0):
-        _start_presentmon()
-    pid, now = _foreground_pid(), time.time()
-    if _fps["proc"] is None:
-        return _etw_fps(pid, True)  # PresentMon fora do ar (ex.: bloqueado pelo anti-cheat): usa a leitura direta
-    with _fps["lock"]:
-        for old in [p for p, f in _fps["frames"].items() if not f or now - f[-1][0] > 5]:
-            del _fps["frames"][old]
-        recent = [ms for t, ms in _fps["frames"].get(pid, ()) if now - t <= 1.0]
-        busy = sorted(((len(f), p) for p, f in _fps["frames"].items()), reverse=True)[:4] if not recent else None
-    if not recent:
-        # O PresentMon não vê quadros do programa em primeiro plano (anti-cheat, PresentMon reiniciando...):
-        # tenta a leitura direta dos eventos
-        etw = _etw_fps(pid, True)
-        if etw:
-            return etw
-    else:
-        _etw_fps(pid, False)  # só para fechar o leitor direto quando o PresentMon voltou (após 1 min sem uso)
-    if not recent:
-        # Diagnóstico (no máximo 1 vez por minuto): quem está desenhando quadros, se não é o programa em primeiro plano
-        if now - _fps.get("diag_at", 0) >= 60:
-            _fps["diag_at"] = now
-            logger.debug("FPS: sem quadros do programa em primeiro plano (PID %s); com quadros: %s"
-                         % (pid, ", ".join("PID %d (%d)" % (p, n) for n, p in busy) or "nenhum"))
+        return None  # config.yaml pede só a captura própria (sem PresentMon)
+    return _presentmon_fps(pid)
+
+
+def current_fps_low():
+    # "1% low" (FPS dos piores quadros dos últimos 10 s) do programa em primeiro plano; só pela captura própria
+    if not _fps_enabled() or not _own_capture_ok():
         return None
-    avg = sum(recent) / len(recent)
-    return int(round(1000.0 / avg)) if avg > 0 else None
+    return _etw_reader().best(_foreground_pids())[1]
 
 
 def _fps_text(fps) -> str:
@@ -971,6 +1023,22 @@ def _fps_fast_loop():
                     _fps_draw["last"] = text
                 except Exception as e:
                     logger.debug("FPS: %s" % e)
+
+
+class BackaFpsLow(CustomDataSource):
+    last_val = [math.nan] * 30
+
+    def as_numeric(self) -> float:
+        self.low = current_fps_low()
+        value = math.nan if self.low is None else float(self.low)
+        _push(self.last_val, value)
+        return value
+
+    def as_string(self) -> str:
+        return "  -- low" if self.low is None else f"{self.low:4d} low"
+
+    def last_values(self) -> List[float]:
+        return self.last_val
 
 
 class BackaFps(CustomDataSource):
@@ -1218,10 +1286,13 @@ UPDATE_ICONS = {"win": "sym:brand-windows:filled:77,166,255", "nv": "sym:device-
 _upd = {"win": {"time": 0.0, "running": False, "pending": None, "reboot": False},
         "nv": {"time": 0.0, "running": False, "installed": None, "latest": None, "available": False, "ids": None}}
 
+# Conta só o que o Windows marca para instalar (AutoSelectOnWebSites): é o que aparece na tela principal do Windows
+# Update. Atualizações opcionais (drivers extras, prévias) ficam em "Atualizações opcionais" e não acendem o ícone.
 WU_SCRIPT = ("$s = New-Object -ComObject Microsoft.Update.Session; $q = $s.CreateUpdateSearcher(); $q.Online = $false; "
              "$r = $q.Search('IsInstalled=0 and IsHidden=0'); "
+             "$n = @($r.Updates | Where-Object { $_.AutoSelectOnWebSites }).Count; "
              "$b = (New-Object -ComObject Microsoft.Update.SystemInfo).RebootRequired; "
-             "Write-Output ('{0}|{1}' -f $r.Updates.Count, $b)")
+             "Write-Output ('{0}|{1}' -f $n, $b)")
 
 
 def _in_background(key: str, fn, every: int):

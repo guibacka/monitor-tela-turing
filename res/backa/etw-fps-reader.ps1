@@ -87,36 +87,66 @@ public class BackaEtwSession
             Queue<long> q;
             if (!frames.TryGetValue(key, out q)) { q = new Queue<long>(); frames[key] = q; }
             q.Enqueue(when);
-            while (when - q.Peek() > 20000000) q.Dequeue();
+            while (when - q.Peek() > Window) q.Dequeue();
             if (when > NewestFresh) NewestFresh = when;
         }
     }
 
-    // "pid:fps ..." com os quadros do último 1 s (até o quadro mais novo; a entrega tem até ~1 s de atraso).
+    const long Second = 10000000;     // relógio dos eventos: unidades de 100 ns
+    const long Window = 10 * Second;  // guarda 10 s de quadros por processo (para o 1% low)
+
+    // "pid:fps:low ..." de cada processo desenhando:
+    //   fps = quadros por segundo no último 1 s, pelo tempo entre o primeiro e o último quadro (mais estável que contar)
+    //   low = "1% low": FPS dos piores quadros dos últimos 10 s (percentil 99 do tempo entre quadros); 0 se há poucos
+    // A entrega dos eventos tem até ~1 s de atraso, então a janela termina no quadro mais novo recebido.
     // O mesmo quadro pode vir pelo DXGI e pelo D3D9: vale o maior dos dois, não a soma.
     public string Report()
     {
         long now = DateTime.UtcNow.ToFileTimeUtc();
-        Dictionary<uint, int> best = new Dictionary<uint, int>();
+        Dictionary<uint, int[]> best = new Dictionary<uint, int[]>();
+        List<long[]> snapshot = new List<long[]>();
+        List<long> keys = new List<long>();
         lock (sync)
         {
             List<long> old = new List<long>();
             foreach (KeyValuePair<long, Queue<long>> kv in frames)
             {
-                Queue<long> q = kv.Value;
-                long newest = 0, count = 0;
-                foreach (long t in q) newest = t;
+                long[] ts = kv.Value.ToArray();
+                long newest = 0;
+                foreach (long t in ts) if (t > newest) newest = t;
                 if ((now - newest) / 1e7 > 5) { old.Add(kv.Key); continue; }
                 if ((now - newest) / 1e7 > Fresh) continue;
-                foreach (long t in q) if (newest - t < 10000000) count++;
-                uint pid = (uint)(kv.Key >> 2);
-                int prev;
-                if (!best.TryGetValue(pid, out prev) || count > prev) best[pid] = (int)count;
+                snapshot.Add(ts);
+                keys.Add(kv.Key);
             }
             foreach (long k in old) frames.Remove(k);
         }
+        // Cálculo fora da trava (os eventos continuam chegando enquanto isso)
+        for (int k = 0; k < snapshot.Count; k++)
+        {
+            long[] ts = snapshot[k];
+            Array.Sort(ts);  // eventos de núcleos diferentes podem chegar fora de ordem
+            long newest = ts[ts.Length - 1];
+            int first = ts.Length - 1;
+            while (first > 0 && newest - ts[first - 1] < Second) first--;
+            int n = ts.Length - first;
+            int fps = n >= 2 && newest > ts[first] ? (int)Math.Round((n - 1) * 1e7 / (newest - ts[first])) : n;
+            int low = 0;
+            if (ts.Length >= 30)
+            {
+                long[] gaps = new long[ts.Length - 1];
+                for (int i = 1; i < ts.Length; i++) gaps[i - 1] = ts[i] - ts[i - 1];
+                Array.Sort(gaps);
+                long p99 = gaps[(int)Math.Floor((gaps.Length - 1) * 0.99)];
+                if (p99 > 0) low = (int)Math.Round(1e7 / p99);
+            }
+            uint pid = (uint)(keys[k] >> 2);
+            int[] prev;
+            if (!best.TryGetValue(pid, out prev) || fps > prev[0]) best[pid] = new int[] { fps, Math.Min(low, fps) };
+        }
         StringBuilder sb = new StringBuilder();
-        foreach (KeyValuePair<uint, int> kv in best) sb.Append(' ').Append(kv.Key).Append(':').Append(kv.Value);
+        foreach (KeyValuePair<uint, int[]> kv in best)
+            sb.Append(' ').Append(kv.Key).Append(':').Append(kv.Value[0]).Append(':').Append(kv.Value[1]);
         return sb.ToString();
     }
 }

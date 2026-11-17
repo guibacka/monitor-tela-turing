@@ -453,6 +453,11 @@ if __name__ == "__main__":
     def backa_inventory_loop():
         # [Backa] Grava a lista de fans encontradas (.monitor.hw.json) para o editor oferecer na hora de escolher
         import library.sensors.sensors_custom as sensors_custom
+        # Captura de FPS: começa a escutar já, antes de qualquer jogo abrir (alguns anti-cheats bloqueiam depois)
+        try:
+            sensors_custom.backa_fps_start()
+        except Exception as e:
+            logger.warning("FPS: não foi possível iniciar a captura (%s)" % e)
         time.sleep(5)
         while True:
             try:
